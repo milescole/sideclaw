@@ -1,0 +1,62 @@
+import pytest
+
+from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+
+
+@pytest.fixture
+def workspace(tmp_path):
+    return tmp_path
+
+
+async def test_read_file(workspace):
+    test_file = workspace / "test.txt"
+    test_file.write_text("hello world")
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="test.txt")
+    assert "hello world" in result
+
+
+async def test_read_file_not_found(workspace):
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="nonexistent.txt")
+    assert "Error" in result or "not found" in result.lower()
+
+
+async def test_read_file_blocks_path_traversal(workspace):
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="../../etc/passwd")
+    assert "Error" in result or "outside" in result.lower()
+
+
+async def test_write_file(workspace):
+    tool = WriteFileTool(workspace)
+    result = await tool.execute(path="output.txt", content="test content")
+    assert (
+        "output.txt" in result.lower() or "written" in result.lower() or "wrote" in result.lower()
+    )
+    assert (workspace / "output.txt").read_text() == "test content"
+
+
+async def test_write_file_creates_directories(workspace):
+    tool = WriteFileTool(workspace)
+    await tool.execute(path="sub/dir/file.txt", content="nested")
+    assert (workspace / "sub/dir/file.txt").read_text() == "nested"
+
+
+async def test_edit_file(workspace):
+    test_file = workspace / "edit.txt"
+    test_file.write_text("foo bar baz")
+    tool = EditFileTool(workspace)
+    await tool.execute(path="edit.txt", old_text="bar", new_text="qux")
+    assert (workspace / "edit.txt").read_text() == "foo qux baz"
+
+
+async def test_list_dir(workspace):
+    (workspace / "a.txt").touch()
+    (workspace / "b.py").touch()
+    (workspace / "subdir").mkdir()
+    tool = ListDirTool(workspace)
+    result = await tool.execute(path=".")
+    assert "a.txt" in result
+    assert "b.py" in result
+    assert "subdir" in result
