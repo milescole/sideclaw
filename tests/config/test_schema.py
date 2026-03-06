@@ -40,6 +40,7 @@ def test_channels_config_defaults():
 
 def test_tools_config_defaults():
     tools = ToolsConfig()
+    assert tools.exec_enabled is False
     assert tools.exec_timeout == 60
     assert tools.web_search_api_key is None
 

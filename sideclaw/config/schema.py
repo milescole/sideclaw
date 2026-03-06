@@ -46,6 +46,7 @@ class ChannelsConfig(BaseModel):
 class ToolsConfig(BaseModel):
     """Tool configurations."""
 
+    exec_enabled: bool = False
     exec_timeout: int = 60
     web_search_api_key: str | None = None
 

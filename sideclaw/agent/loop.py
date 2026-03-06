@@ -50,7 +50,10 @@ class AgentLoop:
         self._registry.register(WriteFileTool(self._workspace))
         self._registry.register(EditFileTool(self._workspace))
         self._registry.register(ListDirTool(self._workspace))
-        self._registry.register(ExecTool(timeout=self._config.tools.exec_timeout))
+        if self._config.tools.exec_enabled:
+            self._registry.register(
+                ExecTool(workspace=self._workspace, timeout=self._config.tools.exec_timeout)
+            )
         self._registry.register(WebSearchTool(api_key=self._config.tools.web_search_api_key))
         self._registry.register(WebFetchTool())
         self._registry.register(SaveMemoryTool(self._memory))

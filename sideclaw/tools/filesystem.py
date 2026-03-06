@@ -14,8 +14,12 @@ class _FsTool(Tool):
 
     def _resolve(self, path: str) -> Path:
         """Resolve path within workspace, blocking traversal."""
-        resolved = (self._workspace / path).resolve()
-        if not str(resolved).startswith(str(self._workspace)):
+        candidate = Path(path)
+        if candidate.is_absolute():
+            raise ValueError(f"Absolute paths are not allowed: {path}")
+
+        resolved = (self._workspace / candidate).resolve()
+        if not resolved.is_relative_to(self._workspace):
             raise ValueError(f"Path outside workspace: {path}")
         return resolved
 

@@ -28,6 +28,40 @@ async def test_read_file_blocks_path_traversal(workspace):
     assert "Error" in result or "outside" in result.lower()
 
 
+async def test_read_file_blocks_absolute_path(workspace):
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="/etc/passwd")
+    assert "Error" in result
+    assert "absolute" in result.lower()
+
+
+async def test_read_file_blocks_sibling_prefix_bypass(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    sibling = tmp_path / "workspace-admin"
+    sibling.mkdir()
+    (sibling / "secret.txt").write_text("secret")
+
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="../workspace-admin/secret.txt")
+    assert "Error" in result
+    assert "outside" in result.lower()
+
+
+async def test_read_file_blocks_symlink_escape(tmp_path):
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret")
+    (workspace / "link.txt").symlink_to(outside / "secret.txt")
+
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="link.txt")
+    assert "Error" in result
+    assert "outside" in result.lower()
+
+
 async def test_write_file(workspace):
     tool = WriteFileTool(workspace)
     result = await tool.execute(path="output.txt", content="test content")

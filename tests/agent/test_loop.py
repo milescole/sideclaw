@@ -5,7 +5,13 @@ import pytest
 from sideclaw.agent.loop import AgentLoop
 from sideclaw.bus.messages import InboundMessage
 from sideclaw.bus.queue import MessageBus
-from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig
+from sideclaw.config.schema import (
+    AgentConfig,
+    Config,
+    OpenRouterConfig,
+    ProvidersConfig,
+    ToolsConfig,
+)
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
 from sideclaw.session.manager import SessionManager
 
@@ -113,3 +119,38 @@ async def test_max_tool_iterations(agent, bus, mock_provider):
 
     # Should stop after max iterations (default 20)
     assert mock_provider.chat.call_count <= 21
+
+
+def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provider, workspace):
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("read_file")
+    assert agent._registry.has("write_file")
+    assert agent._registry.has("edit_file")
+    assert agent._registry.has("list_dir")
+    assert agent._registry.has("exec") is False
+
+
+def test_register_default_tools_includes_exec_when_enabled(
+    config, bus, mock_provider, workspace
+):
+    config.tools = ToolsConfig(exec_enabled=True)
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("exec") is True
