@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+from sideclaw.runtime.models import ApprovalRequirement
 from sideclaw.tools.base import Tool
 
 
@@ -62,6 +63,21 @@ class WriteFileTool(_FsTool):
     def description(self) -> str:
         return "Write content to a file (creates directories as needed)"
 
+    def approval_requirement(self, **kwargs: Any) -> ApprovalRequirement:
+        return ApprovalRequirement.unless_session_approved
+
+    def approval_key(self, **kwargs: Any) -> str:
+        return "fs:write_file"
+
+    def approval_subject(self, **kwargs: Any) -> str:
+        return kwargs["path"]
+
+    def approval_action_type(self, **kwargs: Any) -> str:
+        return "file_write"
+
+    def approval_description(self, **kwargs: Any) -> str:
+        return "file write"
+
     @property
     def parameters(self) -> dict[str, Any]:
         return {
@@ -91,6 +107,21 @@ class EditFileTool(_FsTool):
     @property
     def description(self) -> str:
         return "Replace text in a file"
+
+    def approval_requirement(self, **kwargs: Any) -> ApprovalRequirement:
+        return ApprovalRequirement.unless_session_approved
+
+    def approval_key(self, **kwargs: Any) -> str:
+        return "fs:edit_file"
+
+    def approval_subject(self, **kwargs: Any) -> str:
+        return kwargs["path"]
+
+    def approval_action_type(self, **kwargs: Any) -> str:
+        return "file_edit"
+
+    def approval_description(self, **kwargs: Any) -> str:
+        return "file edit"
 
     @property
     def parameters(self) -> dict[str, Any]:

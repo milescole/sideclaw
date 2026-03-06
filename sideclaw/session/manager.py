@@ -17,6 +17,9 @@ class Session:
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_consolidated: int = 0
+    approved_approval_keys: set[str] = field(default_factory=set)
+    pending_approval: dict | None = None
+    deferred_tool_calls: list[dict] = field(default_factory=list)
 
     def get_history(self, max_messages: int = 500) -> list[dict]:
         """Get recent unconsolidated messages, aligned to start on a user turn."""
@@ -32,6 +35,9 @@ class Session:
         """Reset session state."""
         self.messages.clear()
         self.last_consolidated = 0
+        self.approved_approval_keys.clear()
+        self.pending_approval = None
+        self.deferred_tool_calls.clear()
 
 
 class SessionManager:
@@ -65,6 +71,9 @@ class SessionManager:
                 "created_at": session.created_at.isoformat(),
                 "updated_at": session.updated_at.isoformat(),
                 "last_consolidated": session.last_consolidated,
+                "approved_approval_keys": sorted(session.approved_approval_keys),
+                "pending_approval": session.pending_approval,
+                "deferred_tool_calls": session.deferred_tool_calls,
             }
             f.write(json.dumps(meta) + "\n")
             for msg in session.messages:
@@ -111,4 +120,7 @@ class SessionManager:
                 meta.get("updated_at", datetime.now(UTC).isoformat())
             ),
             last_consolidated=meta.get("last_consolidated", 0),
+            approved_approval_keys=set(meta.get("approved_approval_keys", [])),
+            pending_approval=meta.get("pending_approval"),
+            deferred_tool_calls=meta.get("deferred_tool_calls", []),
         )

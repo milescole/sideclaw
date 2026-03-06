@@ -1,13 +1,28 @@
 from pathlib import Path
 from unittest.mock import patch
 
-from sideclaw.bus.messages import InboundMessage
-from sideclaw.bus.queue import MessageBus
 from typer.testing import CliRunner
 
-from sideclaw.cli.commands import _handle_message, _reset_cli_session, app
+from sideclaw.bus.messages import InboundMessage
+from sideclaw.bus.queue import MessageBus
+from sideclaw.cli.commands import (
+    _approval_config_for_runtime,
+    _handle_message,
+    _reset_cli_session,
+    app,
+)
 from sideclaw.config.loader import load_config, save_config
-from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig, TelegramConfig
+from sideclaw.config.schema import (
+    AgentConfig,
+    ApprovalConfig,
+    ApprovalMode,
+    Config,
+    OpenRouterConfig,
+    ProvidersConfig,
+    TelegramConfig,
+)
+from sideclaw.runtime.approval import check_approval, configure, set_pending
+from sideclaw.runtime.models import ApprovalRequirement, ApprovalRequest
 from sideclaw.session.manager import SessionManager
 
 runner = CliRunner()
@@ -17,6 +32,18 @@ def test_status_command() -> None:
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0
     assert "sideclaw" in result.output.lower() or "config" in result.output.lower()
+
+
+def test_approval_config_for_cli_forces_cli_prompt() -> None:
+    approval = ApprovalConfig(mode=ApprovalMode.channel_prompt)
+    resolved = _approval_config_for_runtime(approval, channel_prompt=False)
+    assert resolved.mode == ApprovalMode.cli_prompt
+
+
+def test_approval_config_for_gateway_forces_channel_prompt() -> None:
+    approval = ApprovalConfig(mode=ApprovalMode.cli_prompt)
+    resolved = _approval_config_for_runtime(approval, channel_prompt=True)
+    assert resolved.mode == ApprovalMode.channel_prompt
 
 
 def test_onboard_command(tmp_path: Path) -> None:
@@ -66,6 +93,28 @@ def test_reset_cli_session_clears_persisted_history(tmp_path: Path) -> None:
     assert reloaded.last_consolidated == 0
 
 
+def test_reset_cli_session_clears_approval_state(tmp_path: Path, monkeypatch) -> None:
+    session_dir = tmp_path / "sessions"
+    manager = SessionManager(session_dir)
+    monkeypatch.setattr("builtins.input", lambda _prompt="": "s")
+    session = manager.get_or_create("cli:cli")
+    check_approval(
+        session=session,
+        tool_name="exec",
+        action_type="shell_command",
+        description="filesystem mutation",
+        subject="touch test.txt",
+        approval_key="shell:filesystem_mutation",
+        requirement=ApprovalRequirement.unless_session_approved,
+    )
+
+    _reset_cli_session(manager, "cli:cli")
+
+    reloaded = SessionManager(session_dir).get_or_create("cli:cli")
+    assert reloaded.approved_approval_keys == set()
+    assert reloaded.pending_approval is None
+
+
 async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> None:
     session_dir = tmp_path / "sessions"
     manager = SessionManager(session_dir)
@@ -77,7 +126,8 @@ async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> Non
 
     class StubAgentLoop:
         async def process_message(self, _msg):  # pragma: no cover - should not be called
-            raise AssertionError("process_message should not be called for /new")
+            msg = "process_message should not be called for /new"
+            raise AssertionError(msg)
 
     msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="/new")
     await _handle_message(StubAgentLoop(), MessageBus(), [], manager, msg)
@@ -85,3 +135,51 @@ async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> Non
     reloaded = SessionManager(session_dir).get_or_create("telegram:123")
     assert reloaded.messages == []
     assert reloaded.last_consolidated == 0
+
+
+async def test_handle_message_resolves_pending_approval(tmp_path: Path) -> None:
+    class StubChannel:
+        channel_name = "telegram"
+
+        def __init__(self) -> None:
+            self.sent = []
+
+        async def send(self, msg):
+            self.sent.append(msg)
+
+    class StubAgentLoop:
+        async def process_message(self, _msg):
+            msg = "process_message should not run for approval replies"
+            raise AssertionError(msg)
+
+        async def resume_pending_approval(self, _msg, _scope):
+            return "Approved."
+
+    configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
+    manager = SessionManager(tmp_path / "sessions")
+    session = manager.get_or_create("telegram:123")
+    set_pending(
+        session,
+        ApprovalRequest(
+            request_id="req-1",
+            tool_name="exec",
+            action_type="shell_command",
+            description="filesystem mutation",
+            subject="touch test.txt",
+            approval_key="shell:filesystem_mutation",
+            requirement=ApprovalRequirement.unless_session_approved,
+            arguments={"command": "touch test.txt"},
+            display_arguments={"command": "touch test.txt"},
+            tool_call_id="call-1",
+        ),
+    )
+
+    channel = StubChannel()
+    msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="yes")
+    try:
+        await _handle_message(StubAgentLoop(), MessageBus(), [channel], manager, msg)
+    finally:
+        configure(ApprovalConfig())
+
+    assert len(channel.sent) == 1
+    assert channel.sent[0].text == "Approved."

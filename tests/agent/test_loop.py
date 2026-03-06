@@ -7,12 +7,16 @@ from sideclaw.bus.messages import InboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import (
     AgentConfig,
+    ApprovalConfig,
+    ApprovalMode,
     Config,
     OpenRouterConfig,
     ProvidersConfig,
     ToolsConfig,
 )
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
+from sideclaw.runtime.approval import configure, get_pending
+from sideclaw.runtime.models import ApprovalScope
 from sideclaw.session.manager import SessionManager
 
 
@@ -154,3 +158,129 @@ def test_register_default_tools_includes_exec_when_enabled(
     agent.register_default_tools()
 
     assert agent._registry.has("exec") is True
+
+
+async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):
+    configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
+    try:
+        tool_response = LLMResponse(
+            content=None,
+            tool_calls=[
+                ToolCallRequest(
+                    id="call_1",
+                    name="write_file",
+                    arguments='{"path": "test.txt", "content": "hello"}',
+                ),
+            ],
+        )
+        mock_provider.chat.side_effect = [tool_response]
+        agent.register_default_tools()
+
+        msg = InboundMessage(
+            channel="telegram",
+            chat_id="chat1",
+            sender_id="user1",
+            text="write a file",
+        )
+        await agent.process_message(msg)
+
+        assert mock_provider.chat.call_count == 1
+        response = await bus.consume_outbound()
+        assert "approval required" in response.text.lower()
+        session = agent._session_manager.get_or_create("telegram:chat1")
+        pending = get_pending(session)
+        assert pending is not None
+        assert pending.tool_name == "write_file"
+    finally:
+        configure(ApprovalConfig())
+
+
+async def test_pending_approval_stops_later_tool_calls(agent, bus, mock_provider, workspace):
+    configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
+    try:
+        tool_response = LLMResponse(
+            content=None,
+            tool_calls=[
+                ToolCallRequest(
+                    id="call_1",
+                    name="write_file",
+                    arguments='{"path": "first.txt", "content": "hello"}',
+                ),
+                ToolCallRequest(
+                    id="call_2",
+                    name="write_file",
+                    arguments='{"path": "second.txt", "content": "world"}',
+                ),
+            ],
+        )
+        mock_provider.chat.side_effect = [tool_response]
+        agent.register_default_tools()
+
+        msg = InboundMessage(
+            channel="telegram",
+            chat_id="chat1",
+            sender_id="user1",
+            text="write files",
+        )
+        await agent.process_message(msg)
+
+        assert not (workspace / "first.txt").exists()
+        assert not (workspace / "second.txt").exists()
+        session = agent._session_manager.get_or_create("telegram:chat1")
+        assert len(session.deferred_tool_calls) == 1
+        assert session.deferred_tool_calls[0]["id"] == "call_2"
+    finally:
+        configure(ApprovalConfig())
+
+
+async def test_resume_pending_approval_executes_blocked_and_deferred_tools(
+    agent,
+    bus,
+    mock_provider,
+    workspace,
+):
+    configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
+    try:
+        tool_response = LLMResponse(
+            content=None,
+            tool_calls=[
+                ToolCallRequest(
+                    id="call_1",
+                    name="write_file",
+                    arguments='{"path": "first.txt", "content": "hello"}',
+                ),
+                ToolCallRequest(
+                    id="call_2",
+                    name="write_file",
+                    arguments='{"path": "second.txt", "content": "world"}',
+                ),
+            ],
+        )
+        final_response = LLMResponse(content="Done!")
+        mock_provider.chat.side_effect = [tool_response, final_response]
+        agent.register_default_tools()
+
+        first_msg = InboundMessage(
+            channel="telegram",
+            chat_id="chat1",
+            sender_id="user1",
+            text="write files",
+        )
+        await agent.process_message(first_msg)
+        await bus.consume_outbound()
+
+        response_text = await agent.resume_pending_approval(
+            InboundMessage(channel="telegram", chat_id="chat1", sender_id="user1", text="yes"),
+            ApprovalScope.session,
+        )
+
+        assert response_text == ""
+        assert (workspace / "first.txt").read_text() == "hello"
+        assert (workspace / "second.txt").read_text() == "world"
+        response = await bus.consume_outbound()
+        assert response.text == "Done!"
+        session = agent._session_manager.get_or_create("telegram:chat1")
+        assert session.pending_approval is None
+        assert session.deferred_tool_calls == []
+    finally:
+        configure(ApprovalConfig())

@@ -1,5 +1,6 @@
 """Configuration schema."""
 
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -51,6 +52,21 @@ class ToolsConfig(BaseModel):
     web_search_api_key: str | None = None
 
 
+class ApprovalMode(StrEnum):
+    auto_deny = "auto_deny"
+    cli_prompt = "cli_prompt"
+    channel_prompt = "channel_prompt"
+
+
+class ApprovalConfig(BaseModel):
+    """Approval gate configuration."""
+
+    enabled: bool = True
+    mode: ApprovalMode = ApprovalMode.cli_prompt
+    timeout_seconds: int = 60
+    dangerous_patterns: list[str] = Field(default_factory=list)
+
+
 class Config(BaseModel):
     """Root configuration."""
 
@@ -58,6 +74,7 @@ class Config(BaseModel):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
 
     @property
     def workspace_path(self) -> Path:

@@ -1,5 +1,6 @@
 import pytest
 
+from sideclaw.runtime.models import ApprovalRequirement
 from sideclaw.tools.shell import ExecTool
 
 
@@ -81,3 +82,23 @@ async def test_exec_truncates_large_output(workspace):
     tool = ExecTool(workspace=workspace, timeout=10)
     result = await tool.execute(command='python3 -c \'print("x" * 12000)\'')
     assert "truncated" in result.lower()
+
+
+def test_exec_read_only_command_does_not_require_approval(workspace):
+    tool = ExecTool(workspace=workspace, timeout=10)
+    requirement = tool.approval_requirement(command="pwd")
+    assert requirement == ApprovalRequirement.never
+
+
+def test_exec_mutating_command_is_session_approvable(workspace):
+    tool = ExecTool(workspace=workspace, timeout=10)
+    requirement = tool.approval_requirement(command="touch note.txt")
+    assert requirement == ApprovalRequirement.unless_session_approved
+    assert tool.approval_key(command="touch note.txt") == "shell:filesystem_mutation"
+
+
+def test_exec_destructive_command_requires_explicit_approval(workspace):
+    tool = ExecTool(workspace=workspace, timeout=10)
+    requirement = tool.approval_requirement(command="git reset --hard HEAD~1")
+    assert requirement == ApprovalRequirement.always
+    assert tool.approval_key(command="git reset --hard HEAD~1") == "shell:destructive"

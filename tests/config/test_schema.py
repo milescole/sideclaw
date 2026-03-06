@@ -1,5 +1,7 @@
 from sideclaw.config.schema import (
     AgentConfig,
+    ApprovalConfig,
+    ApprovalMode,
     ChannelsConfig,
     Config,
     OpenRouterConfig,
@@ -43,6 +45,24 @@ def test_tools_config_defaults():
     assert tools.exec_enabled is False
     assert tools.exec_timeout == 60
     assert tools.web_search_api_key is None
+
+
+def test_approval_config_defaults():
+    cfg = ApprovalConfig()
+    assert cfg.enabled is True
+    assert cfg.mode == ApprovalMode.cli_prompt
+    assert cfg.timeout_seconds == 60
+    assert cfg.dangerous_patterns == []
+
+
+def test_config_has_approval_section():
+    cfg = Config()
+    assert cfg.approval.enabled is True
+
+
+def test_approval_mode_auto_deny():
+    cfg = ApprovalConfig(mode=ApprovalMode.auto_deny)
+    assert cfg.mode == ApprovalMode.auto_deny
 
 
 def test_config_workspace_path():

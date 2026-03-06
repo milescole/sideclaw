@@ -13,16 +13,35 @@ from rich.markdown import Markdown
 from sideclaw.config.loader import get_config_path, load_config, save_config
 from sideclaw.config.schema import (
     AgentConfig,
+    ApprovalConfig,
+    ApprovalMode,
     Config,
     OpenRouterConfig,
     ProvidersConfig,
     TelegramConfig,
 )
+from sideclaw.runtime.models import ApprovalScope
 
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
 console = Console()
 
 DEFAULT_WORKSPACE = Path.home() / ".sideclaw" / "workspace"
+
+
+def _approval_config_for_runtime(
+    approval: ApprovalConfig,
+    *,
+    channel_prompt: bool,
+) -> ApprovalConfig:
+    """Map the configured policy to the current runtime surface."""
+    if approval.mode == ApprovalMode.auto_deny:
+        return approval
+
+    target_mode = ApprovalMode.channel_prompt if channel_prompt else ApprovalMode.cli_prompt
+    if approval.mode == target_mode:
+        return approval
+
+    return approval.model_copy(update={"mode": target_mode})
 
 
 def _reset_cli_session(session_manager: Any, session_key: str = "cli:cli") -> None:
@@ -105,6 +124,10 @@ def onboard() -> None:
 
     console.print(f"[green]Config saved to {config_path}[/green]")
     console.print(f"[green]Workspace created at {workspace}[/green]")
+    console.print(
+        "[yellow]Shell exec is disabled by default. "
+        "Enable tools.exec_enabled only for trusted local deployments.[/yellow]"
+    )
 
 
 @app.command()
@@ -117,6 +140,10 @@ def status() -> None:
     console.print(f"Config: {config_path} ({'exists' if config_path.exists() else 'not found'})")
     console.print(f"Workspace: {config.workspace_path}")
     console.print(f"Model: {config.agent.model}")
+    console.print(
+        f"Shell exec: {'enabled' if config.tools.exec_enabled else 'disabled'} "
+        "(trusted local deployments only)"
+    )
 
     if config.providers.openrouter:
         key = config.providers.openrouter.api_key
@@ -153,6 +180,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
     from sideclaw.bus.messages import InboundMessage
     from sideclaw.bus.queue import MessageBus
     from sideclaw.providers.openrouter import OpenRouterProvider
+    from sideclaw.runtime.approval import configure as configure_approval
     from sideclaw.session.manager import SessionManager
 
     workspace = config.workspace_path
@@ -173,6 +201,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
         session_manager=session_manager,
         workspace=workspace,
     )
+    configure_approval(_approval_config_for_runtime(config.approval, channel_prompt=False))
     agent_loop.register_default_tools()
 
     if single_message:
@@ -228,6 +257,7 @@ async def _run_gateway(config: Config) -> None:
     from sideclaw.agent.loop import AgentLoop
     from sideclaw.bus.queue import MessageBus
     from sideclaw.providers.openrouter import OpenRouterProvider
+    from sideclaw.runtime.approval import configure as configure_approval
     from sideclaw.session.manager import SessionManager
 
     workspace = config.workspace_path
@@ -248,6 +278,7 @@ async def _run_gateway(config: Config) -> None:
         session_manager=session_manager,
         workspace=workspace,
     )
+    configure_approval(_approval_config_for_runtime(config.approval, channel_prompt=True))
     agent_loop.register_default_tools()
 
     channels: list[Any] = []
@@ -278,7 +309,9 @@ async def _run_gateway(config: Config) -> None:
         while True:
             msg = await bus.consume_inbound()
             logger.info(f"[{msg.channel}:{msg.chat_id}] {msg.text[:50]}...")
-            task = asyncio.create_task(_handle_message(agent_loop, bus, channels, session_manager, msg))
+            task = asyncio.create_task(
+                _handle_message(agent_loop, bus, channels, session_manager, msg)
+            )
             pending_tasks.add(task)
             task.add_done_callback(pending_tasks.discard)
     except asyncio.CancelledError:
@@ -297,12 +330,35 @@ async def _handle_message(
 ) -> None:
     """Process a message and route the response."""
     try:
+        from sideclaw.bus.messages import OutboundMessage
+
+        session_key = f"{msg.channel}:{msg.chat_id}"
+
         if msg.text == "/new":
-            _reset_cli_session(session_manager, f"{msg.channel}:{msg.chat_id}")
+            _reset_cli_session(session_manager, session_key)
             return
 
-        await agent_loop.process_message(msg)
-        response = await bus.consume_outbound()
+        session = session_manager.get_or_create(session_key)
+        if session.pending_approval is not None:
+            lowered = msg.text.strip().lower()
+            if lowered in {"y", "yes", "approve"}:
+                response_text = await agent_loop.resume_pending_approval(msg, ApprovalScope.once)
+            elif lowered in {"s", "session"}:
+                response_text = await agent_loop.resume_pending_approval(msg, ApprovalScope.session)
+            else:
+                response_text = await agent_loop.resume_pending_approval(msg, None)
+
+            if response_text:
+                response = OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    text=response_text,
+                )
+            else:
+                response = await bus.consume_outbound()
+        else:
+            await agent_loop.process_message(msg)
+            response = await bus.consume_outbound()
 
         for ch in channels:
             if ch.channel_name == response.channel:

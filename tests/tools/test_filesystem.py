@@ -1,5 +1,6 @@
 import pytest
 
+from sideclaw.runtime.models import ApprovalRequirement
 from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 
 
@@ -94,3 +95,38 @@ async def test_list_dir(workspace):
     assert "a.txt" in result
     assert "b.py" in result
     assert "subdir" in result
+
+
+def test_write_file_declares_session_approval_requirement(workspace):
+    tool = WriteFileTool(workspace)
+    assert tool.approval_requirement(path="blocked.txt", content="test") == (
+        ApprovalRequirement.unless_session_approved
+    )
+    assert tool.approval_key(path="blocked.txt", content="test") == "fs:write_file"
+
+def test_edit_file_declares_session_approval_requirement(workspace):
+    tool = EditFileTool(workspace)
+    assert tool.approval_requirement(
+        path="edit.txt",
+        old_text="original",
+        new_text="changed",
+    ) == ApprovalRequirement.unless_session_approved
+    assert tool.approval_key(
+        path="edit.txt",
+        old_text="original",
+        new_text="changed",
+    ) == "fs:edit_file"
+
+
+async def test_read_file_does_not_require_approval(workspace):
+    (workspace / "safe.txt").write_text("safe content")
+    tool = ReadFileTool(workspace)
+    result = await tool.execute(path="safe.txt")
+    assert result == "safe content"
+
+
+async def test_list_dir_does_not_require_approval(workspace):
+    (workspace / "file.txt").touch()
+    tool = ListDirTool(workspace)
+    result = await tool.execute(path=".")
+    assert "file.txt" in result

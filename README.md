@@ -118,7 +118,7 @@ Core configuration sections:
 - `agent`: model, workspace, token/temperature defaults, memory window
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
-- `tools`: shell timeout + web search API key
+- `tools`: `exec_enabled`, shell timeout, and web search API key
 
 Workspace defaults to:
 
@@ -139,10 +139,14 @@ Onboarding creates:
 - `write_file`: write a file in workspace
 - `edit_file`: single text replacement in a file
 - `list_dir`: list directory entries
-- `exec`: run shell commands with timeout
+- `exec`: optional shell access, disabled by default and intended only for trusted local deployments
 - `web_search`: Brave Search API integration
 - `web_fetch`: fetch raw URL text
 - `save_memory`: update long-term memory store
+
+When enabled, `exec` runs inside the configured workspace, strips secret-like environment
+variables, blocks obviously dangerous command patterns, and requires explicit CLI approval for
+mutating commands. Gateway/channel usage is denied by default.
 
 ## Development
 
