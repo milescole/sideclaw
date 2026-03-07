@@ -30,22 +30,24 @@ class SessionManager:
         return session
 
     def save(self, session: Session) -> None:
-        """Persist session to JSONL file."""
+        """Persist session to JSONL file atomically."""
         session.updated_at = datetime.now(UTC)
         path = self._key_to_path(session.key)
-        with path.open("w") as f:
-            meta = {
-                "_type": "metadata",
-                "created_at": session.created_at.isoformat(),
-                "updated_at": session.updated_at.isoformat(),
-                "last_consolidated": session.last_consolidated,
-                "approved_approval_keys": sorted(session.approved_approval_keys),
-                "pending_approval": session.pending_approval,
-                "deferred_tool_calls": session.deferred_tool_calls,
-            }
-            f.write(json.dumps(meta) + "\n")
-            for msg in session.messages:
-                f.write(json.dumps(msg) + "\n")
+        tmp_path = path.with_suffix(".jsonl.tmp")
+
+        meta = {
+            "_type": "metadata",
+            "created_at": session.created_at.isoformat(),
+            "updated_at": session.updated_at.isoformat(),
+            "last_consolidated": session.last_consolidated,
+            "approved_approval_keys": sorted(session.approved_approval_keys),
+            "pending_approval": session.pending_approval,
+            "deferred_tool_calls": session.deferred_tool_calls,
+        }
+        lines = [json.dumps(meta)] + [json.dumps(msg) for msg in session.messages]
+        tmp_path.write_text("\n".join(lines) + "\n")
+        tmp_path.replace(path)
+
         logger.debug(f"Session saved: {session.key} ({len(session.messages)} messages)")
 
     def invalidate(self, key: str) -> None:
