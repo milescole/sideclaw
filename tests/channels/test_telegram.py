@@ -21,8 +21,14 @@ def test_channel_name(channel: TelegramChannel) -> None:
     assert channel._channel_name == "telegram"
 
 
-def test_allow_from_empty_allows_all(channel: TelegramChannel) -> None:
-    assert channel.is_allowed("anyone")
+def test_allow_from_empty_denies_all(channel: TelegramChannel) -> None:
+    assert not channel.is_allowed("anyone")
+
+
+def test_allow_from_wildcard_allows_all() -> None:
+    bus = MessageBus()
+    ch = TelegramChannel(bus=bus, token="fake:token", allow_from=["*"])
+    assert ch.is_allowed("anyone")
 
 
 def test_allow_from_restricts() -> None:

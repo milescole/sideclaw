@@ -22,8 +22,15 @@ from sideclaw.config.schema import (
 )
 from sideclaw.runtime.models import ApprovalScope
 
+from sideclaw.utils.redact import configure_logging
+
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
 console = Console()
+
+
+@app.callback()
+def _startup() -> None:
+    configure_logging()
 
 DEFAULT_WORKSPACE = Path.home() / ".sideclaw" / "workspace"
 
