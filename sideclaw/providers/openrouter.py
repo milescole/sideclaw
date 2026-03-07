@@ -1,6 +1,5 @@
 """OpenRouter LLM provider using LiteLLM."""
 
-import os
 from typing import Any
 
 from litellm import acompletion
@@ -21,7 +20,6 @@ class OpenRouterProvider(LLMProvider):
         self._api_key = api_key
         self._default_model = default_model
         self._api_base = api_base
-        os.environ["OPENROUTER_API_KEY"] = api_key
 
     async def chat(
         self,
