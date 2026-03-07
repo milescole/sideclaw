@@ -14,7 +14,7 @@ from sideclaw.runtime.models import (
     ApprovalScope,
     ApprovalStatus,
 )
-from sideclaw.session.manager import Session
+from sideclaw.session.session import Session
 
 
 def setup_function() -> None:

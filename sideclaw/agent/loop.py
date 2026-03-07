@@ -26,7 +26,8 @@ from sideclaw.runtime.context import (
     set_tool_runtime_context,
 )
 from sideclaw.runtime.models import ApprovalScope, ToolExecutionOutcome, ToolExecutionResult
-from sideclaw.session.manager import Session, SessionManager
+from sideclaw.session.manager import SessionManager
+from sideclaw.session.session import Session
 from sideclaw.tools.registry import ToolRegistry
 
 MAX_TOOL_ITERATIONS = 20

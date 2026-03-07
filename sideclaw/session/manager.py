@@ -1,43 +1,12 @@
-"""Session management with JSONL persistence."""
+"""Session management for conversation history."""
 
 import json
-from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
 
-
-@dataclass
-class Session:
-    """A conversation session."""
-
-    key: str
-    messages: list[dict] = field(default_factory=list)
-    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
-    last_consolidated: int = 0
-    approved_approval_keys: set[str] = field(default_factory=set)
-    pending_approval: dict | None = None
-    deferred_tool_calls: list[dict] = field(default_factory=list)
-
-    def get_history(self, max_messages: int = 500) -> list[dict]:
-        """Get recent unconsolidated messages, aligned to start on a user turn."""
-        msgs = self.messages[self.last_consolidated :]
-        if len(msgs) > max_messages:
-            msgs = msgs[-max_messages:]
-        # Align to first user message
-        while msgs and msgs[0].get("role") != "user":
-            msgs = msgs[1:]
-        return msgs
-
-    def clear(self) -> None:
-        """Reset session state."""
-        self.messages.clear()
-        self.last_consolidated = 0
-        self.approved_approval_keys.clear()
-        self.pending_approval = None
-        self.deferred_tool_calls.clear()
+from sideclaw.session.session import Session
 
 
 class SessionManager:
@@ -65,7 +34,6 @@ class SessionManager:
         session.updated_at = datetime.now(UTC)
         path = self._key_to_path(session.key)
         with path.open("w") as f:
-            # Metadata header
             meta = {
                 "_type": "metadata",
                 "created_at": session.created_at.isoformat(),
@@ -102,25 +70,37 @@ class SessionManager:
         return self._dir / f"{safe}.jsonl"
 
     def _load(self, path: Path, key: str) -> Session:
-        """Load session from JSONL file."""
-        lines = path.read_text().strip().split("\n")
-        if not lines:
+        """Load session from JSONL file. Returns empty session if file is corrupted."""
+        try:
+            lines = path.read_text().strip().split("\n")
+            if not lines:
+                return Session(key=key)
+
+            meta = json.loads(lines[0])
+
+            messages = []
+            for line in lines[1:]:
+                if not line.strip():
+                    continue
+                try:
+                    messages.append(json.loads(line))
+                except json.JSONDecodeError:
+                    logger.warning(f"Skipping corrupted message line in session {key}")
+
+            return Session(
+                key=key,
+                messages=messages,
+                created_at=datetime.fromisoformat(
+                    meta.get("created_at", datetime.now(UTC).isoformat())
+                ),
+                updated_at=datetime.fromisoformat(
+                    meta.get("updated_at", datetime.now(UTC).isoformat())
+                ),
+                last_consolidated=meta.get("last_consolidated", 0),
+                approved_approval_keys=set(meta.get("approved_approval_keys", [])),
+                pending_approval=meta.get("pending_approval"),
+                deferred_tool_calls=meta.get("deferred_tool_calls", []),
+            )
+        except (OSError, json.JSONDecodeError, ValueError, KeyError):
+            logger.warning(f"Session file corrupted, starting fresh: {path}")
             return Session(key=key)
-
-        meta = json.loads(lines[0])
-        messages = [json.loads(line) for line in lines[1:] if line.strip()]
-
-        return Session(
-            key=key,
-            messages=messages,
-            created_at=datetime.fromisoformat(
-                meta.get("created_at", datetime.now(UTC).isoformat())
-            ),
-            updated_at=datetime.fromisoformat(
-                meta.get("updated_at", datetime.now(UTC).isoformat())
-            ),
-            last_consolidated=meta.get("last_consolidated", 0),
-            approved_approval_keys=set(meta.get("approved_approval_keys", [])),
-            pending_approval=meta.get("pending_approval"),
-            deferred_tool_calls=meta.get("deferred_tool_calls", []),
-        )
