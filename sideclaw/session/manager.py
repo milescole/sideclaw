@@ -1,5 +1,6 @@
 """Session management for conversation history."""
 
+import asyncio
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,6 +17,7 @@ class SessionManager:
         self._dir = session_dir
         self._dir.mkdir(parents=True, exist_ok=True)
         self._cache: dict[str, Session] = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def get_or_create(self, key: str) -> Session:
         """Get an existing session or create a new one."""
@@ -49,6 +51,14 @@ class SessionManager:
         tmp_path.replace(path)
 
         logger.debug(f"Session saved: {session.key} ({len(session.messages)} messages)")
+
+    def get_lock(self, key: str) -> asyncio.Lock:
+        """Return the per-session async lock."""
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[key] = lock
+        return lock
 
     def invalidate(self, key: str) -> None:
         """Remove session from cache."""

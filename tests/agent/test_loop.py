@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -58,12 +59,11 @@ def agent(config, bus, mock_provider, workspace):
 
 
 async def test_process_text_message(agent, bus, mock_provider):
-    """Agent should call LLM and publish outbound response."""
+    """Agent should call LLM and return an outbound response."""
     msg = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="hello")
-    await agent.process_message(msg)
+    response = await agent.process_message(msg)
 
     mock_provider.chat.assert_called_once()
-    response = await bus.consume_outbound()
     assert response.text == "Hello!"
     assert response.channel == "cli"
     assert response.chat_id == "user1"
@@ -87,10 +87,9 @@ async def test_process_tool_call_then_response(agent, bus, mock_provider):
     agent._registry.register(EchoTool())
 
     msg = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="echo test")
-    await agent.process_message(msg)
+    response = await agent.process_message(msg)
 
     assert mock_provider.chat.call_count == 2
-    response = await bus.consume_outbound()
     assert response.text == "Done!"
 
 
@@ -143,9 +142,7 @@ def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provi
     assert agent._registry.has("exec") is False
 
 
-def test_register_default_tools_includes_exec_when_enabled(
-    config, bus, mock_provider, workspace
-):
+def test_register_default_tools_includes_exec_when_enabled(config, bus, mock_provider, workspace):
     config.tools = ToolsConfig(exec_enabled=True)
     agent = AgentLoop(
         config=config,
@@ -182,10 +179,9 @@ async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):
             sender_id="user1",
             text="write a file",
         )
-        await agent.process_message(msg)
+        response = await agent.process_message(msg)
 
         assert mock_provider.chat.call_count == 1
-        response = await bus.consume_outbound()
         assert "approval required" in response.text.lower()
         session = agent._session_manager.get_or_create("telegram:chat1")
         pending = get_pending(session)
@@ -266,21 +262,109 @@ async def test_resume_pending_approval_executes_blocked_and_deferred_tools(
             sender_id="user1",
             text="write files",
         )
-        await agent.process_message(first_msg)
-        await bus.consume_outbound()
+        first_response = await agent.process_message(first_msg)
+        assert "approval required" in first_response.text.lower()
 
         response_text = await agent.resume_pending_approval(
             InboundMessage(channel="telegram", chat_id="chat1", sender_id="user1", text="yes"),
             ApprovalScope.session,
         )
 
-        assert response_text == ""
+        assert response_text == "Done!"
         assert (workspace / "first.txt").read_text() == "hello"
         assert (workspace / "second.txt").read_text() == "world"
-        response = await bus.consume_outbound()
-        assert response.text == "Done!"
         session = agent._session_manager.get_or_create("telegram:chat1")
         assert session.pending_approval is None
         assert session.deferred_tool_calls == []
     finally:
         configure(ApprovalConfig())
+
+
+class BlockingProvider:
+    def __init__(self, *, release_after_calls: int = 1) -> None:
+        self.release_after_calls = release_after_calls
+        self.current_calls = 0
+        self.max_concurrent_calls = 0
+        self.total_calls = 0
+        self.first_entered = asyncio.Event()
+        self.target_entered = asyncio.Event()
+        self.release = asyncio.Event()
+
+    async def chat(
+        self,
+        messages,
+        tools=None,
+        model=None,
+        max_tokens=4096,
+        temperature=0.7,
+    ) -> LLMResponse:
+        del messages, tools, model, max_tokens, temperature
+        self.total_calls += 1
+        self.current_calls += 1
+        self.max_concurrent_calls = max(self.max_concurrent_calls, self.current_calls)
+        if self.total_calls == 1:
+            self.first_entered.set()
+        if self.total_calls >= self.release_after_calls:
+            self.target_entered.set()
+        await self.release.wait()
+        self.current_calls -= 1
+        return LLMResponse(content=f"response-{self.total_calls}")
+
+    def get_default_model(self) -> str:
+        return "openai/gpt-4o-mini"
+
+
+async def test_process_message_serializes_same_session(config, bus, workspace):
+    provider = BlockingProvider()
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    first_msg = InboundMessage(channel="cli", chat_id="shared", sender_id="user1", text="first")
+    second_msg = InboundMessage(channel="cli", chat_id="shared", sender_id="user1", text="second")
+
+    first_task = asyncio.create_task(agent.process_message(first_msg))
+    await asyncio.wait_for(provider.first_entered.wait(), timeout=1)
+
+    second_task = asyncio.create_task(agent.process_message(second_msg))
+    await asyncio.sleep(0.05)
+
+    assert provider.total_calls == 1
+    assert provider.max_concurrent_calls == 1
+
+    provider.release.set()
+    first_response = await asyncio.wait_for(first_task, timeout=1)
+    second_response = await asyncio.wait_for(second_task, timeout=1)
+
+    assert first_response.text == "response-1"
+    assert second_response.text == "response-2"
+
+
+async def test_process_message_allows_parallel_different_sessions(config, bus, workspace):
+    provider = BlockingProvider(release_after_calls=2)
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    first_msg = InboundMessage(channel="cli", chat_id="one", sender_id="user1", text="first")
+    second_msg = InboundMessage(channel="cli", chat_id="two", sender_id="user2", text="second")
+
+    first_task = asyncio.create_task(agent.process_message(first_msg))
+    await asyncio.wait_for(provider.first_entered.wait(), timeout=1)
+
+    second_task = asyncio.create_task(agent.process_message(second_msg))
+    await asyncio.wait_for(provider.target_entered.wait(), timeout=1)
+
+    assert provider.max_concurrent_calls == 2
+
+    provider.release.set()
+    responses = await asyncio.wait_for(asyncio.gather(first_task, second_task), timeout=1)
+    assert {response.chat_id for response in responses} == {"one", "two"}

@@ -1,5 +1,4 @@
 """Core agent loop: receive message, call LLM, execute tools, respond."""
-
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +72,7 @@ class AgentLoop:
         self._registry.register(WebFetchTool())
         self._registry.register(SaveMemoryTool(self._memory))
 
-    async def process_message(self, msg: InboundMessage) -> None:
+    async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the agent loop."""
         session_key = f"{msg.channel}:{msg.chat_id}"
         context_token = set_tool_runtime_context(
@@ -84,27 +83,28 @@ class AgentLoop:
                 session_key=session_key,
             )
         )
-        session = self._session_manager.get_or_create(session_key)
+        lock = self._session_manager.get_lock(session_key)
 
         try:
-            messages = self._context.build_messages(
-                session.get_history(max_messages=100),
-                msg.text,
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-            )
+            async with lock:
+                session = self._session_manager.get_or_create(session_key)
+                messages = self._context.build_messages(
+                    session.get_history(max_messages=100),
+                    msg.text,
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                )
 
-            # Add user message to session
-            session.messages.append({"role": "user", "content": msg.text})
-            await self._run_provider_loop(msg, session, messages)
+                session.messages.append({"role": "user", "content": msg.text})
+                text = await self._run_provider_loop(session, messages)
 
-            # Save session
-            self._session_manager.save(session)
+                self._session_manager.save(session)
 
-            # Check if memory consolidation needed
-            unconsolidated = len(session.messages) - session.last_consolidated
-            if unconsolidated >= self._config.agent.memory_window:
-                await self._consolidate_memory(session)
+                unconsolidated = len(session.messages) - session.last_consolidated
+                if unconsolidated >= self._config.agent.memory_window:
+                    await self._consolidate_memory(session)
+
+                return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, text=text)
         finally:
             reset_tool_runtime_context(context_token)
 
@@ -123,75 +123,74 @@ class AgentLoop:
                 session_key=session_key,
             )
         )
-        session = self._session_manager.get_or_create(session_key)
+        lock = self._session_manager.get_lock(session_key)
 
         try:
-            request = get_pending(session)
-            if request is None:
-                return "No pending approval."
+            async with lock:
+                session = self._session_manager.get_or_create(session_key)
+                request = get_pending(session)
+                if request is None:
+                    return "No pending approval."
 
-            decision = approve_pending(session, scope)
-            deferred_tool_calls = list(session.deferred_tool_calls)
-            if not decision.approved:
-                clear_pending(session)
-                self._session_manager.save(session)
-                return "Denied."
-
-            clear_pending(session)
-            messages = self._build_messages_from_session(
-                session,
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-            )
-
-            approved_result = await self._execute_tool_direct(
-                request.tool_name,
-                request.arguments,
-            )
-            approved_tool_msg = {
-                "role": "tool",
-                "tool_call_id": request.tool_call_id,
-                "name": request.tool_name,
-                "content": approved_result,
-            }
-            messages.append(approved_tool_msg)
-            session.messages.append(approved_tool_msg)
-
-            for index, deferred in enumerate(deferred_tool_calls):
-                result = await self._execute_tool_call(
-                    session,
-                    deferred["name"],
-                    deferred["arguments"],
-                    deferred["id"],
-                    deferred_tool_calls[index + 1 :],
-                )
-                if result.outcome == ToolExecutionOutcome.pending:
+                decision = approve_pending(session, scope)
+                deferred_tool_calls = list(session.deferred_tool_calls)
+                if not decision.approved:
+                    clear_pending(session)
                     self._session_manager.save(session)
-                    return result.content
+                    return "Denied."
 
-                tool_msg = {
+                clear_pending(session)
+                messages = self._build_messages_from_session(
+                    session,
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                )
+
+                approved_result = await self._execute_tool_direct(
+                    request.tool_name,
+                    request.arguments,
+                )
+                approved_tool_msg = {
                     "role": "tool",
-                    "tool_call_id": deferred["id"],
-                    "name": deferred["name"],
-                    "content": result.content,
+                    "tool_call_id": request.tool_call_id,
+                    "name": request.tool_name,
+                    "content": approved_result,
                 }
-                messages.append(tool_msg)
-                session.messages.append(tool_msg)
+                messages.append(approved_tool_msg)
+                session.messages.append(approved_tool_msg)
 
-            await self._run_provider_loop(msg, session, messages, send_response=True)
-            self._session_manager.save(session)
-            return ""
+                for index, deferred in enumerate(deferred_tool_calls):
+                    result = await self._execute_tool_call(
+                        session,
+                        deferred["name"],
+                        deferred["arguments"],
+                        deferred["id"],
+                        deferred_tool_calls[index + 1 :],
+                    )
+                    if result.outcome == ToolExecutionOutcome.pending:
+                        self._session_manager.save(session)
+                        return result.content
+
+                    tool_msg = {
+                        "role": "tool",
+                        "tool_call_id": deferred["id"],
+                        "name": deferred["name"],
+                        "content": result.content,
+                    }
+                    messages.append(tool_msg)
+                    session.messages.append(tool_msg)
+
+                content = await self._run_provider_loop(session, messages)
+                self._session_manager.save(session)
+                return content
         finally:
             reset_tool_runtime_context(context_token)
 
     async def _run_provider_loop(
         self,
-        msg: InboundMessage,
         session: Session,
         messages: list[dict[str, Any]],
-        *,
-        send_response: bool = True,
-    ) -> None:
+    ) -> str:
         """Drive the provider/tool loop until text output or pending approval."""
         tools = self._registry.get_definitions() or None
 
@@ -206,10 +205,8 @@ class AgentLoop:
 
             if response.finish_reason == "error":
                 content = response.content or "An error occurred."
-                if send_response:
-                    await self._send_response(msg, content)
                 session.messages.append({"role": "assistant", "content": response.content})
-                return
+                return content
 
             if response.tool_calls:
                 assistant_msg = self._build_assistant_tool_msg(response)
@@ -229,9 +226,7 @@ class AgentLoop:
                     )
 
                     if result.outcome == ToolExecutionOutcome.pending:
-                        if send_response:
-                            await self._send_response(msg, result.content)
-                        return
+                        return result.content
 
                     tool_msg = {
                         "role": "tool",
@@ -245,14 +240,11 @@ class AgentLoop:
 
             content = response.content or ""
             session.messages.append({"role": "assistant", "content": content})
-            if send_response:
-                await self._send_response(msg, content)
-            return
+            return content
 
         content = "(Stopped: too many tool iterations)"
-        if send_response:
-            await self._send_response(msg, content)
         session.messages.append({"role": "assistant", "content": content})
+        return content
 
     async def _execute_tool_call(
         self,
@@ -277,7 +269,6 @@ class AgentLoop:
                 outcome=ToolExecutionOutcome.denied,
                 content=f"Error: Unknown tool '{name}'",
             )
-
         decision = check_approval(
             session=session,
             tool_name=name,
@@ -322,12 +313,6 @@ class AgentLoop:
         except Exception as e:  # noqa: BLE001
             logger.error(f"Tool '{name}' failed: {e}")
             return f"Error executing {name}: {e}"
-
-    async def _send_response(self, original: InboundMessage, text: str) -> None:
-        """Send a response back through the bus."""
-        await self._bus.publish_outbound(
-            OutboundMessage(channel=original.channel, chat_id=original.chat_id, text=text)
-        )
 
     def _build_assistant_tool_msg(self, response: LLMResponse) -> dict[str, Any]:
         """Build an assistant message with tool calls for the message history."""

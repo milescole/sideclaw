@@ -50,9 +50,8 @@ async def test_full_text_conversation(workspace, config, bus):
     agent.register_default_tools()
 
     msg = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="Hello!")
-    await agent.process_message(msg)
+    response = await agent.process_message(msg)
 
-    response = await bus.consume_outbound()
     assert response.text == "Hi! How can I help?"
     assert response.channel == "cli"
     assert response.chat_id == "user1"
@@ -89,9 +88,8 @@ async def test_tool_use_flow(workspace, config, bus):
     agent.register_default_tools()
 
     msg = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="Read test.txt")
-    await agent.process_message(msg)
+    response = await agent.process_message(msg)
 
-    response = await bus.consume_outbound()
     assert "secret content" in response.text
 
 
@@ -115,11 +113,9 @@ async def test_multi_turn_conversation(workspace, config, bus):
 
     msg1 = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="Hello")
     await agent.process_message(msg1)
-    await bus.consume_outbound()
 
     msg2 = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="What did I say?")
     await agent.process_message(msg2)
-    await bus.consume_outbound()
 
     second_call_messages = (
         provider.chat.call_args_list[1][1].get("messages") or provider.chat.call_args_list[1][0][0]

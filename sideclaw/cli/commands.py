@@ -21,16 +21,17 @@ from sideclaw.config.schema import (
     TelegramConfig,
 )
 from sideclaw.runtime.models import ApprovalScope
-
 from sideclaw.utils.redact import configure_logging
 
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
 console = Console()
+GATEWAY_MAX_CONCURRENCY = 8
 
 
 @app.callback()
 def _startup() -> None:
     configure_logging()
+
 
 DEFAULT_WORKSPACE = Path.home() / ".sideclaw" / "workspace"
 
@@ -213,8 +214,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
 
     if single_message:
         msg = InboundMessage(channel="cli", chat_id="cli", sender_id="cli", text=single_message)
-        await agent_loop.process_message(msg)
-        response = await bus.consume_outbound()
+        response = await agent_loop.process_message(msg)
         console.print(Markdown(response.text))
         return
 
@@ -239,9 +239,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
             continue
 
         msg = InboundMessage(channel="cli", chat_id="cli", sender_id="cli", text=user_input)
-        await agent_loop.process_message(msg)
-
-        response = await bus.consume_outbound()
+        response = await agent_loop.process_message(msg)
         console.print()
         console.print(Markdown(response.text))
         console.print()
@@ -290,6 +288,7 @@ async def _run_gateway(config: Config) -> None:
 
     channels: list[Any] = []
     pending_tasks: set[asyncio.Task[None]] = set()
+    semaphore = asyncio.Semaphore(GATEWAY_MAX_CONCURRENCY)
 
     if config.channels.telegram:
         from sideclaw.channels.telegram import TelegramChannel
@@ -317,7 +316,7 @@ async def _run_gateway(config: Config) -> None:
             msg = await bus.consume_inbound()
             logger.info(f"[{msg.channel}:{msg.chat_id}] {msg.text[:50]}...")
             task = asyncio.create_task(
-                _handle_message(agent_loop, bus, channels, session_manager, msg)
+                _handle_message(agent_loop, channels, session_manager, semaphore, msg)
             )
             pending_tasks.add(task)
             task.add_done_callback(pending_tasks.discard)
@@ -333,39 +332,44 @@ async def _run_gateway(config: Config) -> None:
 
 
 async def _handle_message(
-    agent_loop: Any, bus: Any, channels: list[Any], session_manager: Any, msg: Any
+    agent_loop: Any,
+    channels: list[Any],
+    session_manager: Any,
+    semaphore: asyncio.Semaphore,
+    msg: Any,
 ) -> None:
     """Process a message and route the response."""
     try:
         from sideclaw.bus.messages import OutboundMessage
 
-        session_key = f"{msg.channel}:{msg.chat_id}"
+        async with semaphore:
+            session_key = f"{msg.channel}:{msg.chat_id}"
 
-        if msg.text == "/new":
-            _reset_cli_session(session_manager, session_key)
-            return
+            if msg.text == "/new":
+                _reset_cli_session(session_manager, session_key)
+                return
 
-        session = session_manager.get_or_create(session_key)
-        if session.pending_approval is not None:
-            lowered = msg.text.strip().lower()
-            if lowered in {"y", "yes", "approve"}:
-                response_text = await agent_loop.resume_pending_approval(msg, ApprovalScope.once)
-            elif lowered in {"s", "session"}:
-                response_text = await agent_loop.resume_pending_approval(msg, ApprovalScope.session)
-            else:
-                response_text = await agent_loop.resume_pending_approval(msg, None)
+            session = session_manager.get_or_create(session_key)
+            if session.pending_approval is not None:
+                lowered = msg.text.strip().lower()
+                if lowered in {"y", "yes", "approve"}:
+                    response_text = await agent_loop.resume_pending_approval(
+                        msg, ApprovalScope.once
+                    )
+                elif lowered in {"s", "session"}:
+                    response_text = await agent_loop.resume_pending_approval(
+                        msg, ApprovalScope.session
+                    )
+                else:
+                    response_text = await agent_loop.resume_pending_approval(msg, None)
 
-            if response_text:
                 response = OutboundMessage(
                     channel=msg.channel,
                     chat_id=msg.chat_id,
                     text=response_text,
                 )
             else:
-                response = await bus.consume_outbound()
-        else:
-            await agent_loop.process_message(msg)
-            response = await bus.consume_outbound()
+                response = await agent_loop.process_message(msg)
 
         for ch in channels:
             if ch.channel_name == response.channel:

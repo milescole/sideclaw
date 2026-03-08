@@ -1,10 +1,10 @@
 from pathlib import Path
 from unittest.mock import patch
 
+import asyncio
 from typer.testing import CliRunner
 
 from sideclaw.bus.messages import InboundMessage
-from sideclaw.bus.queue import MessageBus
 from sideclaw.cli.commands import (
     _approval_config_for_runtime,
     _handle_message,
@@ -130,7 +130,7 @@ async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> Non
             raise AssertionError(msg)
 
     msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="/new")
-    await _handle_message(StubAgentLoop(), MessageBus(), [], manager, msg)
+    await _handle_message(StubAgentLoop(), [], manager, asyncio.Semaphore(1), msg)
 
     reloaded = SessionManager(session_dir).get_or_create("telegram:123")
     assert reloaded.messages == []
@@ -177,9 +177,76 @@ async def test_handle_message_resolves_pending_approval(tmp_path: Path) -> None:
     channel = StubChannel()
     msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="yes")
     try:
-        await _handle_message(StubAgentLoop(), MessageBus(), [channel], manager, msg)
+        await _handle_message(StubAgentLoop(), [channel], manager, asyncio.Semaphore(1), msg)
     finally:
         configure(ApprovalConfig())
 
     assert len(channel.sent) == 1
     assert channel.sent[0].text == "Approved."
+
+
+async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None:
+    class StubChannel:
+        channel_name = "telegram"
+
+        def __init__(self) -> None:
+            self.sent = []
+
+        async def send(self, msg):
+            self.sent.append(msg)
+
+    class StubAgentLoop:
+        def __init__(self) -> None:
+            self.current = 0
+            self.max_concurrent = 0
+            self.total_calls = 0
+            self.first_entered = asyncio.Event()
+            self.second_entered = asyncio.Event()
+            self.release_first = asyncio.Event()
+            self.release_second = asyncio.Event()
+
+        async def process_message(self, msg):
+            self.total_calls += 1
+            self.current += 1
+            self.max_concurrent = max(self.max_concurrent, self.current)
+
+            if self.total_calls == 1:
+                self.first_entered.set()
+                await self.release_first.wait()
+            else:
+                self.second_entered.set()
+                await self.release_second.wait()
+
+            self.current -= 1
+
+            from sideclaw.bus.messages import OutboundMessage
+
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, text=msg.text.upper())
+
+    channel = StubChannel()
+    agent_loop = StubAgentLoop()
+    manager = SessionManager(tmp_path / "sessions")
+    semaphore = asyncio.Semaphore(1)
+
+    first = InboundMessage(channel="telegram", chat_id="1", sender_id="1", text="first")
+    second = InboundMessage(channel="telegram", chat_id="2", sender_id="2", text="second")
+
+    first_task = asyncio.create_task(_handle_message(agent_loop, [channel], manager, semaphore, first))
+    await asyncio.wait_for(agent_loop.first_entered.wait(), timeout=1)
+
+    second_task = asyncio.create_task(
+        _handle_message(agent_loop, [channel], manager, semaphore, second)
+    )
+    await asyncio.sleep(0.05)
+
+    assert agent_loop.total_calls == 1
+    assert agent_loop.max_concurrent == 1
+
+    agent_loop.release_first.set()
+    await asyncio.wait_for(agent_loop.second_entered.wait(), timeout=1)
+    agent_loop.release_second.set()
+
+    await asyncio.wait_for(asyncio.gather(first_task, second_task), timeout=1)
+
+    assert [msg.text for msg in channel.sent] == ["FIRST", "SECOND"]
+    assert agent_loop.max_concurrent == 1
