@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sideclaw.runtime.models import ApprovalRequirement
-from sideclaw.tools.base import Tool
+from sideclaw.tools.base import Tool, truncate_tool_output
 
 _SAFE_ENV_PREFIXES = (
     "HOME",
@@ -77,9 +77,6 @@ _ALWAYS_APPROVAL_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = tuple(
     )
 )
 _SHELL_OPERATORS = {"&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>", "1>", "1>>", "&>"}
-_MAX_OUTPUT_CHARS = 10_000
-
-
 class ExecTool(Tool):
     """Execute shell commands within the workspace."""
 
@@ -255,7 +252,4 @@ class ExecTool(Tool):
             parts.append(f"(exit code {returncode})")
 
         output = "\n".join(parts) if parts else "(no output)"
-        if len(output) > _MAX_OUTPUT_CHARS:
-            truncated = len(output) - _MAX_OUTPUT_CHARS
-            output = output[:_MAX_OUTPUT_CHARS] + f"\n... (truncated, {truncated} more chars)"
-        return output
+        return truncate_tool_output(output)

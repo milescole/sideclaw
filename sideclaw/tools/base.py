@@ -5,6 +5,20 @@ from typing import Any
 
 from sideclaw.runtime.models import ApprovalRequirement
 
+DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
+
+
+def truncate_tool_output(
+    output: str,
+    *,
+    max_chars: int = DEFAULT_MAX_TOOL_OUTPUT_CHARS,
+) -> str:
+    """Bound tool output before it is sent back into model context."""
+    if len(output) <= max_chars:
+        return output
+    truncated = len(output) - max_chars
+    return output[:max_chars] + f"\n... (truncated, {truncated} more chars)"
+
 
 class Tool(ABC):
     """Base class for all tools."""

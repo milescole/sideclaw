@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from sideclaw.runtime.models import ApprovalRequirement
-from sideclaw.tools.base import Tool
+from sideclaw.tools.base import Tool, truncate_tool_output
 
 
 class _FsTool(Tool):
@@ -49,7 +49,7 @@ class ReadFileTool(_FsTool):
             p = self._resolve(kwargs["path"])
             if not p.exists():
                 return f"Error: File not found: {kwargs['path']}"
-            return p.read_text()
+            return truncate_tool_output(p.read_text())
         except ValueError as e:
             return f"Error: {e}"
 

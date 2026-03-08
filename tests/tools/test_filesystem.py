@@ -63,6 +63,16 @@ async def test_read_file_blocks_symlink_escape(tmp_path):
     assert "outside" in result.lower()
 
 
+async def test_read_file_truncates_large_output(workspace):
+    tool = ReadFileTool(workspace)
+    (workspace / "large.txt").write_text("x" * 12_000)
+
+    result = await tool.execute(path="large.txt")
+
+    assert "truncated" in result.lower()
+    assert len(result) < 12_000
+
+
 async def test_write_file(workspace):
     tool = WriteFileTool(workspace)
     result = await tool.execute(path="output.txt", content="test content")
