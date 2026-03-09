@@ -26,10 +26,10 @@ def test_write_and_read_long_term(store):
 def test_append_history(store, workspace):
     store.append_history("Had a conversation about weather.")
     store.append_history("Discussed Python async patterns.")
-    content = (workspace / "memory" / "HISTORY.md").read_text()
+    content = (workspace / "docs" / "memory" / "history.md").read_text()
     assert "weather" in content
     assert "Python async" in content
-    leftovers = list((workspace / "memory").glob(".HISTORY.md.*.tmp"))
+    leftovers = list((workspace / "docs" / "memory").glob(".history.md.*.tmp"))
     assert leftovers == []
 
 
@@ -47,6 +47,8 @@ def test_get_memory_context_with_data(store):
 def test_write_long_term_cleans_up_temp_file(store, workspace):
     store.write_long_term("User prefers atomic writes.")
 
-    assert (workspace / "memory" / "MEMORY.md").read_text() == "User prefers atomic writes."
-    leftovers = list((workspace / "memory").glob(".MEMORY.md.*.tmp"))
+    assert (workspace / "docs" / "memory" / "long-term.md").read_text() == (
+        "User prefers atomic writes."
+    )
+    leftovers = list((workspace / "docs" / "memory").glob(".long-term.md.*.tmp"))
     assert leftovers == []

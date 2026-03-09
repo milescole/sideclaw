@@ -11,6 +11,7 @@ from sideclaw.config.schema import (
     ApprovalConfig,
     ApprovalMode,
     Config,
+    MemoryConfig,
     OpenRouterConfig,
     ProvidersConfig,
     ToolsConfig,
@@ -19,10 +20,12 @@ from sideclaw.providers.base import LLMResponse, ToolCallRequest
 from sideclaw.runtime.approval import configure, get_pending
 from sideclaw.runtime.models import ApprovalScope
 from sideclaw.session.manager import SessionManager
+from sideclaw.workspace import sync_workspace_templates
 
 
 @pytest.fixture
 def workspace(tmp_path):
+    sync_workspace_templates(tmp_path)
     return tmp_path
 
 
@@ -104,6 +107,65 @@ async def test_session_persistence(agent, bus, mock_provider):
     assert session.messages[0]["content"] == "hello"
 
 
+async def test_process_message_respects_keep_recent_messages(config, bus, workspace):
+    config.memory = MemoryConfig(keep_recent_messages=2)
+    provider = AsyncMock()
+    provider.get_default_model.return_value = "openai/gpt-4o-mini"
+    provider.chat.return_value = LLMResponse(content="Hello!")
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+    session = agent._session_manager.get_or_create("cli:user1")
+    session.messages = [
+        {"role": "user", "content": "old question"},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "recent question"},
+        {"role": "assistant", "content": "recent answer"},
+    ]
+
+    msg = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="current request")
+    await agent.process_message(msg)
+
+    call_messages = (
+        provider.chat.call_args_list[0][1].get("messages") or provider.chat.call_args_list[0][0][0]
+    )
+    rendered = "\n".join(str(message.get("content", "")) for message in call_messages)
+    assert "old question" not in rendered
+    assert "old answer" not in rendered
+    assert "recent question" in rendered
+    assert "recent answer" in rendered
+
+
+def test_build_messages_from_session_respects_keep_recent_messages(config, bus, mock_provider, workspace):
+    config.memory = MemoryConfig(keep_recent_messages=2)
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+    session = agent._session_manager.get_or_create("cli:user1")
+    session.messages = [
+        {"role": "user", "content": "old question"},
+        {"role": "assistant", "content": "old answer"},
+        {"role": "user", "content": "recent question"},
+        {"role": "assistant", "content": "recent answer"},
+    ]
+
+    messages = agent._build_messages_from_session(session, channel="cli", chat_id="user1")
+    rendered = "\n".join(str(message.get("content", "")) for message in messages)
+
+    assert "old question" not in rendered
+    assert "old answer" not in rendered
+    assert "recent question" in rendered
+    assert "recent answer" in rendered
+
+
 async def test_max_tool_iterations(agent, bus, mock_provider):
     """Agent should stop after max iterations to prevent infinite loops."""
     # Always return tool calls
@@ -140,6 +202,8 @@ def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provi
     assert agent._registry.has("edit_file")
     assert agent._registry.has("list_dir")
     assert agent._registry.has("exec") is False
+    assert agent._registry.has("workspace_read")
+    assert agent._registry.has("workspace_tree")
 
 
 def test_register_default_tools_includes_exec_when_enabled(config, bus, mock_provider, workspace):
@@ -296,6 +360,41 @@ async def test_resume_pending_approval_executes_blocked_and_deferred_tools(
         assert session.deferred_tool_calls == []
     finally:
         configure(ApprovalConfig())
+
+
+async def test_consolidate_memory_preserves_long_term_structure(agent, mock_provider, workspace):
+    long_term = workspace / "docs" / "memory" / "long-term.md"
+    original = long_term.read_text()
+    mock_provider.chat.return_value = LLMResponse(
+        content=(
+            '{"durable_facts":["- User prefers Python."],'
+            '"decisions":["- Use routed markdown context."],'
+            '"preferences":["- Keep answers concise."]}'
+        )
+    )
+
+    session = agent._session_manager.get_or_create("cli:user1")
+    session.messages = [
+        {"role": "user", "content": "remember alpha"},
+        {"role": "assistant", "content": "noted alpha"},
+        {"role": "user", "content": "remember beta"},
+        {"role": "assistant", "content": "noted beta"},
+    ]
+    agent._config.agent.memory_window = 2
+
+    await agent._consolidate_memory(session)
+
+    updated = long_term.read_text()
+    assert updated.startswith("---\n")
+    assert "## Durable Facts" in updated
+    assert "- User prefers Python." in updated
+    assert "## Decisions" in updated
+    assert "- Use routed markdown context." in updated
+    assert "## Preferences" in updated
+    assert "- Keep answers concise." in updated
+    snapshots = list((workspace / "docs" / "memory" / "snapshots").glob("*-long-term.md"))
+    assert snapshots
+    assert original in snapshots[0].read_text()
 
 
 class BlockingProvider:

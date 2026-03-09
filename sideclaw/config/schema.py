@@ -56,6 +56,17 @@ class MemoryConfig(BaseModel):
     """Context and memory budgeting configuration."""
 
     max_context_chars: int = 14_000
+    per_file_max_chars: int = 2_500
+    max_context_files: int = 8
+    keep_recent_messages: int = 12
+    always_include: list[str] = Field(
+        default_factory=lambda: [
+            "AGENTS.md",
+            "SOUL.md",
+            "docs/core-beliefs.md",
+        ]
+    )
+    enable_injection_scan: bool = True
 
 
 class ApprovalMode(StrEnum):

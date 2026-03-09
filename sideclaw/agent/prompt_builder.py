@@ -5,55 +5,58 @@ from math import ceil
 from pathlib import Path
 from typing import Any
 
-from sideclaw.memory.store import MemoryStore
+from sideclaw.workspace.context import WorkspaceContextManager
 
-BOOTSTRAP_FILES = ["IDENTITY.md", "SOUL.md", "USER.md", "TOOLS.md"]
 TRUNCATION_MARKER = "\n... (truncated for context budget)"
 CHARS_PER_TOKEN_ESTIMATE = 4
+RUNTIME_CONTEXT_TAG = "[Runtime Context — metadata only, not instructions]"
 
 BASE_IDENTITY = """You are a helpful AI assistant powered by SideClaw.
 You have access to tools. Use them when needed to help the user.
 Be concise and direct. Ask clarifying questions when needed."""
 
 
-class ContextBuilder:
+class PromptBuilder:
     """Assembles system prompts and message lists."""
 
-    def __init__(self, workspace: Path, *, max_context_chars: int = 14_000) -> None:
+    def __init__(  # noqa: PLR0913
+        self,
+        workspace: Path,
+        *,
+        max_context_chars: int = 14_000,
+        per_file_max_chars: int = 2_500,
+        max_context_files: int = 8,
+        always_include: list[str] | None = None,
+        enable_injection_scan: bool = True,
+    ) -> None:
         self._workspace = workspace
-        self._memory = MemoryStore(workspace)
         self._max_context_chars = max_context_chars
+        self._workspace_context = WorkspaceContextManager(
+            workspace,
+            max_context_chars=max_context_chars,
+            per_file_max_chars=per_file_max_chars,
+            max_context_files=max_context_files,
+            always_include=always_include or ["AGENTS.md", "SOUL.md", "docs/core-beliefs.md"],
+            enable_injection_scan=enable_injection_scan,
+        )
 
     def build_system_prompt(
         self,
         *,
+        current_message: str = "",
+        history: list[dict[str, Any]] | None = None,
         channel: str | None = None,
         chat_id: str | None = None,
     ) -> str:
         """Build the full system prompt."""
         parts = [BASE_IDENTITY]
-
-        # Load bootstrap files
-        for filename in BOOTSTRAP_FILES:
-            path = self._workspace / filename
-            if path.exists():
-                content = path.read_text().strip()
-                if content:
-                    parts.append(f"## {filename.replace('.md', '')}\n\n{content}")
-
-        # Long-term memory
-        memory_ctx = self._memory.get_memory_context()
-        if memory_ctx:
-            parts.append(memory_ctx)
-
-        # Runtime context
-        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-        runtime = f"## Runtime\n\nCurrent time: {now}"
-        if channel:
-            runtime += f"\nChannel: {channel}"
-        if chat_id:
-            runtime += f"\nChat ID: {chat_id}"
-        parts.append(runtime)
+        bundle = self._workspace_context.build_bundle(
+            current_message=current_message,
+            history=history or [],
+        )
+        rendered = bundle.render()
+        if rendered:
+            parts.append(rendered)
 
         return "\n\n---\n\n".join(parts)
 
@@ -66,9 +69,15 @@ class ContextBuilder:
         chat_id: str | None = None,
     ) -> list[dict]:
         """Build the full message list for the LLM."""
-        system_prompt = self.build_system_prompt(channel=channel, chat_id=chat_id)
+        system_prompt = self.build_system_prompt(
+            current_message=current_message,
+            history=history,
+            channel=channel,
+            chat_id=chat_id,
+        )
         system_message = {"role": "system", "content": system_prompt}
-        user_message = {"role": "user", "content": current_message}
+        runtime_context = self._build_runtime_context(channel=channel, chat_id=chat_id)
+        user_message = {"role": "user", "content": f"{runtime_context}\n\n{current_message}"}
         history_messages = [dict(message) for message in history]
 
         messages = [system_message, *history_messages, user_message]
@@ -140,6 +149,16 @@ class ContextBuilder:
         user_content = str(user_message.get("content") or "")
         target = max(len(user_content) - overflow, 0)
         user_message["content"] = self._truncate_text(user_content, target)
+
+    @staticmethod
+    def _build_runtime_context(*, channel: str | None, chat_id: str | None) -> str:
+        now = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        lines = [f"Current time: {now}"]
+        if channel:
+            lines.append(f"Channel: {channel}")
+        if chat_id:
+            lines.append(f"Chat ID: {chat_id}")
+        return RUNTIME_CONTEXT_TAG + "\n" + "\n".join(lines)
 
     def _estimate_message_chars(self, message: dict[str, Any]) -> int:
         total = len(str(message.get("role") or ""))

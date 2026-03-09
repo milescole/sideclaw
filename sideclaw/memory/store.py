@@ -12,13 +12,13 @@ class MemoryStore:
     """Two-layer memory: facts file + append-only history log."""
 
     def __init__(self, workspace: Path) -> None:
-        self._dir = workspace / "memory"
+        self._dir = workspace / "docs" / "memory"
         self._dir.mkdir(parents=True, exist_ok=True)
-        self._memory_file = self._dir / "MEMORY.md"
-        self._history_file = self._dir / "HISTORY.md"
+        self._memory_file = self._dir / "long-term.md"
+        self._history_file = self._dir / "history.md"
 
     def read_long_term(self) -> str:
-        """Read long-term memory (MEMORY.md)."""
+        """Read long-term memory."""
         if not self._memory_file.exists():
             return ""
         return self._memory_file.read_text().strip()
@@ -29,7 +29,7 @@ class MemoryStore:
         logger.debug("Updated long-term memory")
 
     def append_history(self, entry: str) -> None:
-        """Append a timestamped entry to HISTORY.md."""
+        """Append a timestamped entry to the durable history log."""
         ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
         atomic_append_text(self._history_file, f"[{ts}] {entry}\n")
 

@@ -51,6 +51,8 @@ def test_onboard_command(tmp_path: Path) -> None:
         with patch("sideclaw.cli.commands.DEFAULT_WORKSPACE", tmp_path / "workspace"):
             result = runner.invoke(app, ["onboard"], input="\nopenai/gpt-4o-mini\n\n\n")
             assert result.exit_code == 0
+            assert (tmp_path / "workspace" / "AGENTS.md").exists()
+            assert (tmp_path / "workspace" / "docs" / "index.md").exists()
 
 
 def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> None:

@@ -10,14 +10,13 @@ from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
 from sideclaw.session.manager import SessionManager
+from sideclaw.workspace import sync_workspace_templates
 
 
 @pytest.fixture
 def workspace(tmp_path):
     ws = tmp_path / "workspace"
-    ws.mkdir()
-    (ws / "sessions").mkdir()
-    (ws / "memory").mkdir()
+    sync_workspace_templates(ws)
     return ws
 
 
@@ -124,9 +123,9 @@ async def test_multi_turn_conversation(workspace, config, bus):
     assert len(user_messages) >= 2
 
 
-async def test_identity_file_loaded(workspace, config, bus):
-    """Bootstrap files should be loaded into system prompt."""
-    (workspace / "IDENTITY.md").write_text("You are CodeBot, a coding assistant.")
+async def test_agents_file_loaded(workspace, config, bus):
+    """Canonical workspace files should be loaded into system prompt."""
+    (workspace / "AGENTS.md").write_text("Route coding work through active plans.")
 
     provider = AsyncMock()
     provider.get_default_model.return_value = "openai/gpt-4o-mini"
@@ -147,4 +146,42 @@ async def test_identity_file_loaded(workspace, config, bus):
         provider.chat.call_args_list[0][1].get("messages") or provider.chat.call_args_list[0][0][0]
     )
     system_msg = call_messages[0]["content"]
-    assert "CodeBot" in system_msg
+    assert "active plans" in system_msg
+
+
+async def test_routed_workspace_doc_loaded_from_current_request(workspace, config, bus):
+    runbook = workspace / "docs" / "runbooks" / "database.md"
+    runbook.write_text(
+        "---\n"
+        "read_when:\n"
+        "  - database migration\n"
+        "---\n\n"
+        "# Database Runbook\n\n"
+        "Use migrations carefully.\n"
+    )
+
+    provider = AsyncMock()
+    provider.get_default_model.return_value = "openai/gpt-4o-mini"
+    provider.chat.return_value = LLMResponse(content="Handled.")
+
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    msg = InboundMessage(
+        channel="cli",
+        chat_id="user1",
+        sender_id="user1",
+        text="Help with a database migration",
+    )
+    await agent.process_message(msg)
+
+    call_messages = (
+        provider.chat.call_args_list[0][1].get("messages") or provider.chat.call_args_list[0][0][0]
+    )
+    system_msg = call_messages[0]["content"]
+    assert "Use migrations carefully." in system_msg

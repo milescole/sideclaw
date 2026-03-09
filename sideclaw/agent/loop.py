@@ -5,7 +5,7 @@ from typing import Any
 import json_repair
 from loguru import logger
 
-from sideclaw.agent.context import ContextBuilder
+from sideclaw.agent.prompt_builder import PromptBuilder
 from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
@@ -28,6 +28,7 @@ from sideclaw.runtime.models import ApprovalScope, ToolExecutionOutcome, ToolExe
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
 from sideclaw.tools.registry import ToolRegistry
+from sideclaw.workspace.docs import WorkspaceDocs
 
 MAX_TOOL_ITERATIONS = 20
 
@@ -49,17 +50,32 @@ class AgentLoop:
         self._provider = provider
         self._session_manager = session_manager
         self._workspace = Path(workspace)
-        self._context = ContextBuilder(
+        self._context = PromptBuilder(
             self._workspace,
             max_context_chars=self._config.memory.max_context_chars,
+            per_file_max_chars=self._config.memory.per_file_max_chars,
+            max_context_files=self._config.memory.max_context_files,
+            always_include=self._config.memory.always_include,
+            enable_injection_scan=self._config.memory.enable_injection_scan,
         )
         self._memory = MemoryStore(self._workspace)
+        self._workspace_docs = WorkspaceDocs(self._workspace)
         self._registry = ToolRegistry()
+
+    def _session_history_limit(self) -> int:
+        """Return the configured session history limit for prompt construction."""
+        return max(1, self._config.memory.keep_recent_messages)
 
     def register_default_tools(self) -> None:
         """Register the built-in tool set."""
         from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
-        from sideclaw.tools.memory import SaveMemoryTool
+        from sideclaw.tools.memory import (
+            DocsGrepTool,
+            MemorySearchTool,
+            MemoryWriteTool,
+            WorkspaceReadTool,
+            WorkspaceTreeTool,
+        )
         from sideclaw.tools.shell import ExecTool
         from sideclaw.tools.web import WebFetchTool, WebSearchTool
 
@@ -73,7 +89,11 @@ class AgentLoop:
             )
         self._registry.register(WebSearchTool(api_key=self._config.tools.web_search_api_key))
         self._registry.register(WebFetchTool())
-        self._registry.register(SaveMemoryTool(self._memory))
+        self._registry.register(DocsGrepTool(self._workspace))
+        self._registry.register(MemorySearchTool(self._workspace))
+        self._registry.register(WorkspaceReadTool(self._workspace))
+        self._registry.register(WorkspaceTreeTool(self._workspace))
+        self._registry.register(MemoryWriteTool(self._workspace))
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the agent loop."""
@@ -92,7 +112,7 @@ class AgentLoop:
             async with lock:
                 session = self._session_manager.get_or_create(session_key)
                 messages = self._context.build_messages(
-                    session.get_history(max_messages=100),
+                    session.get_history(max_messages=self._session_history_limit()),
                     msg.text,
                     channel=msg.channel,
                     chat_id=msg.chat_id,
@@ -334,11 +354,18 @@ class AgentLoop:
         chat_id: str,
     ) -> list[dict[str, Any]]:
         """Build provider messages from the current saved session history."""
-        messages = [{"role": "system", "content": self._context.build_system_prompt(
-            channel=channel,
-            chat_id=chat_id,
-        )}]
-        messages.extend(session.get_history(max_messages=100))
+        history = session.get_history(max_messages=self._session_history_limit())
+        messages = [
+            {
+                "role": "system",
+                "content": self._context.build_system_prompt(
+                    history=history,
+                    channel=channel,
+                    chat_id=chat_id,
+                ),
+            }
+        ]
+        messages.extend(history)
         return messages
 
     async def _consolidate_memory(self, session: Session) -> None:
@@ -351,8 +378,10 @@ class AgentLoop:
 
         current_memory = self._memory.read_long_term()
         summary_prompt = (
-            "Summarize the key facts and decisions from these messages. "
-            "Merge with existing memory. Return only the updated memory content.\n\n"
+            "Summarize the key durable information from these messages. "
+            "Merge with the existing long-term memory. "
+            "Return only JSON with keys durable_facts, decisions, and preferences. "
+            "Each value must be an array of short markdown bullet lines without headings.\n\n"
             f"## Current Memory\n{current_memory}\n\n"
             f"## Messages to Consolidate\n"
         )
@@ -366,7 +395,9 @@ class AgentLoop:
                 model=self._config.agent.model,
             )
             if response.content:
-                self._memory.write_long_term(response.content)
+                sections = self._parse_consolidated_memory(response.content)
+                if sections:
+                    self._workspace_docs.update_long_term_sections(sections)
                 # Build history entry
                 entry_parts = [
                     msg["content"][:100]
@@ -380,3 +411,33 @@ class AgentLoop:
                 logger.info("Memory consolidated")
         except (RuntimeError, OSError, ValueError, TimeoutError) as e:
             logger.error(f"Memory consolidation failed: {e}")
+
+    @staticmethod
+    def _parse_consolidated_memory(content: str) -> dict[str, str]:
+        """Parse the structured long-term memory update returned by the LLM."""
+        try:
+            payload = json_repair.loads(content)
+        except (TypeError, ValueError):
+            payload = {}
+
+        if isinstance(payload, dict):
+            sections: dict[str, str] = {}
+            for field, section in (
+                ("durable_facts", "Durable Facts"),
+                ("decisions", "Decisions"),
+                ("preferences", "Preferences"),
+            ):
+                value = payload.get(field)
+                if isinstance(value, list):
+                    lines = [str(item).strip() for item in value if str(item).strip()]
+                    if lines:
+                        sections[section] = "\n".join(lines)
+                elif isinstance(value, str) and value.strip():
+                    sections[section] = value.strip()
+            if sections:
+                return sections
+
+        fallback_lines = [line.strip() for line in content.splitlines() if line.strip()]
+        if not fallback_lines:
+            return {}
+        return {"Durable Facts": "\n".join(fallback_lines)}

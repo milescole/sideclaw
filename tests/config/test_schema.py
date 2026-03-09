@@ -51,6 +51,15 @@ def test_tools_config_defaults():
 def test_memory_config_defaults():
     memory = MemoryConfig()
     assert memory.max_context_chars == 14_000
+    assert memory.per_file_max_chars == 2_500
+    assert memory.max_context_files == 8
+    assert memory.keep_recent_messages == 12
+    assert memory.always_include == [
+        "AGENTS.md",
+        "SOUL.md",
+        "docs/core-beliefs.md",
+    ]
+    assert memory.enable_injection_scan is True
 
 
 def test_approval_config_defaults():

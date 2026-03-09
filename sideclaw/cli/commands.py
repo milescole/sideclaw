@@ -22,6 +22,7 @@ from sideclaw.config.schema import (
 )
 from sideclaw.runtime.models import ApprovalScope
 from sideclaw.utils.redact import configure_logging
+from sideclaw.workspace import sync_workspace_templates
 
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
 console = Console()
@@ -118,17 +119,9 @@ def onboard() -> None:
     save_config(config, config_path)
 
     workspace = config.workspace_path
-    workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "memory").mkdir(exist_ok=True)
-    (workspace / "sessions").mkdir(exist_ok=True)
-
-    templates_dir = Path(__file__).parent.parent / "templates"
-    if templates_dir.exists():
-        for tmpl in templates_dir.glob("*.md"):
-            dest = workspace / tmpl.name
-            if not dest.exists():
-                shutil.copy2(tmpl, dest)
-                console.print(f"  Created {tmpl.name}")
+    created_files = sync_workspace_templates(workspace)
+    for created_file in created_files:
+        console.print(f"  Created {created_file.relative_to(workspace)}")
 
     console.print(f"[green]Config saved to {config_path}[/green]")
     console.print(f"[green]Workspace created at {workspace}[/green]")
