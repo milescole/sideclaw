@@ -49,7 +49,10 @@ class AgentLoop:
         self._provider = provider
         self._session_manager = session_manager
         self._workspace = Path(workspace)
-        self._context = ContextBuilder(self._workspace)
+        self._context = ContextBuilder(
+            self._workspace,
+            max_context_chars=self._config.memory.max_context_chars,
+        )
         self._memory = MemoryStore(self._workspace)
         self._registry = ToolRegistry()
 

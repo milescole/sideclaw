@@ -4,6 +4,7 @@ from sideclaw.config.schema import (
     ApprovalMode,
     ChannelsConfig,
     Config,
+    MemoryConfig,
     OpenRouterConfig,
     ProvidersConfig,
     TelegramConfig,
@@ -47,6 +48,11 @@ def test_tools_config_defaults():
     assert tools.web_search_api_key is None
 
 
+def test_memory_config_defaults():
+    memory = MemoryConfig()
+    assert memory.max_context_chars == 14_000
+
+
 def test_approval_config_defaults():
     cfg = ApprovalConfig()
     assert cfg.enabled is True
@@ -58,6 +64,8 @@ def test_approval_config_defaults():
 def test_config_has_approval_section():
     cfg = Config()
     assert cfg.approval.enabled is True
+    assert cfg.memory.max_context_chars == 14_000
+
 
 
 def test_approval_mode_auto_deny():

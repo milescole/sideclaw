@@ -52,3 +52,33 @@ def test_build_messages_includes_runtime_context(builder):
     messages = builder.build_messages([], "hello", channel="telegram", chat_id="123")
     system = messages[0]["content"]
     assert "telegram" in system.lower()
+
+
+def test_build_messages_trims_old_history_to_fit_budget(workspace):
+    builder = ContextBuilder(workspace, max_context_chars=400)
+    history = [
+        {"role": "user", "content": "old question " * 8},
+        {"role": "assistant", "content": "old answer " * 8},
+        {"role": "user", "content": "recent question " * 4},
+        {"role": "assistant", "content": "recent answer " * 4},
+    ]
+
+    messages = builder.build_messages(history, "current request")
+
+    assert all("old question" not in str(message.get("content", "")) for message in messages)
+    assert any("recent question" in str(message.get("content", "")) for message in messages)
+    assert messages[-1]["content"] == "current request"
+    assert builder.estimate_context_chars(messages) <= 400
+    assert builder.estimate_context_tokens(messages) > 0
+
+
+def test_build_messages_truncates_system_prompt_when_base_context_exceeds_budget(workspace):
+    (workspace / "SOUL.md").write_text("soul " * 200)
+    builder = ContextBuilder(workspace, max_context_chars=180)
+
+    messages = builder.build_messages([], "current request")
+
+    assert messages[0]["role"] == "system"
+    assert "truncated for context budget" in messages[0]["content"]
+    assert messages[-1]["content"] == "current request"
+    assert builder.estimate_context_chars(messages) <= 180

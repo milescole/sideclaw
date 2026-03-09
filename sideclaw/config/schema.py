@@ -52,6 +52,12 @@ class ToolsConfig(BaseModel):
     web_search_api_key: str | None = None
 
 
+class MemoryConfig(BaseModel):
+    """Context and memory budgeting configuration."""
+
+    max_context_chars: int = 14_000
+
+
 class ApprovalMode(StrEnum):
     auto_deny = "auto_deny"
     cli_prompt = "cli_prompt"
@@ -74,6 +80,7 @@ class Config(BaseModel):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
     approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
 
     @property
