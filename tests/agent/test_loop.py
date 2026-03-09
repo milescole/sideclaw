@@ -229,6 +229,24 @@ async def test_pending_approval_stops_later_tool_calls(agent, bus, mock_provider
         configure(ApprovalConfig())
 
 
+async def test_execute_tool_call_validates_before_approval(agent):
+    agent.register_default_tools()
+    session = agent._session_manager.get_or_create("cli:user1")
+
+    result = await agent._execute_tool_call(
+        session,
+        "write_file",
+        '{"content": "hello"}',
+        "call_1",
+        [],
+    )
+
+    assert result.outcome == "success"
+    assert result.content == (
+        "Error: Invalid arguments for tool 'write_file': 'path' is a required property"
+    )
+
+
 async def test_resume_pending_approval_executes_blocked_and_deferred_tools(
     agent,
     bus,

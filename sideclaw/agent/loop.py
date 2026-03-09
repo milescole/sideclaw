@@ -149,7 +149,7 @@ class AgentLoop:
                     chat_id=msg.chat_id,
                 )
 
-                approved_result = await self._execute_tool_direct(
+                approved_result = await self._registry.execute(
                     request.tool_name,
                     request.arguments,
                 )
@@ -266,7 +266,12 @@ class AgentLoop:
             params = {}
         logger.debug(f"Executing tool: {name}({params})")
 
-        tool = self._registry.get(name)
+        tool, validation_error = self._registry.resolve_call(name, params)
+        if validation_error is not None:
+            return ToolExecutionResult(
+                outcome=ToolExecutionOutcome.success,
+                content=validation_error,
+            )
         if tool is None:
             return ToolExecutionResult(
                 outcome=ToolExecutionOutcome.denied,
@@ -303,19 +308,8 @@ class AgentLoop:
 
         return ToolExecutionResult(
             outcome=ToolExecutionOutcome.success,
-            content=await self._execute_tool_direct(name, params),
+            content=await self._registry.execute(name, params),
         )
-
-    async def _execute_tool_direct(self, name: str, params: dict[str, Any]) -> str:
-        """Execute a tool without running approval policy."""
-        tool = self._registry.get(name)
-        if tool is None:
-            return f"Error: Unknown tool '{name}'"
-        try:
-            return await tool.execute(**params)
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"Tool '{name}' failed: {e}")
-            return f"Error executing {name}: {e}"
 
     def _build_assistant_tool_msg(self, response: LLMResponse) -> dict[str, Any]:
         """Build an assistant message with tool calls for the message history."""

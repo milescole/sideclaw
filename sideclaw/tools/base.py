@@ -1,6 +1,7 @@
 """Abstract base class for tools."""
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from typing import Any
 
 from sideclaw.runtime.models import ApprovalRequirement
@@ -70,6 +71,13 @@ class Tool(ABC):
         """Return redacted arguments for approval prompts, if needed."""
         return kwargs or None
 
+    def parameter_schema(self) -> dict[str, Any]:
+        """Return the normalized parameter schema used for advertising and validation."""
+        schema = deepcopy(self.parameters)
+        if schema.get("type") == "object" and "properties" in schema:
+            schema.setdefault("additionalProperties", False)
+        return schema
+
     def to_schema(self) -> dict[str, Any]:
         """Convert to OpenAI function calling format."""
         return {
@@ -77,6 +85,6 @@ class Tool(ABC):
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters,
+                "parameters": self.parameter_schema(),
             },
         }
