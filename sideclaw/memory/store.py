@@ -5,6 +5,8 @@ from pathlib import Path
 
 from loguru import logger
 
+from sideclaw.utils.files import atomic_append_text, atomic_write_text
+
 
 class MemoryStore:
     """Two-layer memory: facts file + append-only history log."""
@@ -23,14 +25,13 @@ class MemoryStore:
 
     def write_long_term(self, content: str) -> None:
         """Overwrite long-term memory."""
-        self._memory_file.write_text(content)
+        atomic_write_text(self._memory_file, content)
         logger.debug("Updated long-term memory")
 
     def append_history(self, entry: str) -> None:
         """Append a timestamped entry to HISTORY.md."""
         ts = datetime.now(UTC).strftime("%Y-%m-%d %H:%M")
-        with self._history_file.open("a") as f:
-            f.write(f"[{ts}] {entry}\n")
+        atomic_append_text(self._history_file, f"[{ts}] {entry}\n")
 
     def get_memory_context(self) -> str:
         """Get memory content for system prompt injection."""

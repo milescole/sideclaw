@@ -9,6 +9,7 @@ from uuid import uuid4
 from loguru import logger
 
 from sideclaw.session.session import Session
+from sideclaw.utils.files import atomic_write_text
 
 
 class SessionManager:
@@ -37,7 +38,6 @@ class SessionManager:
         """Persist session to JSONL file atomically."""
         session.updated_at = datetime.now(UTC)
         path = self._key_to_path(session.key)
-        tmp_path = path.with_suffix(".jsonl.tmp")
 
         meta = {
             "_type": "metadata",
@@ -49,8 +49,7 @@ class SessionManager:
             "deferred_tool_calls": session.deferred_tool_calls,
         }
         lines = [json.dumps(meta)] + [json.dumps(msg) for msg in session.messages]
-        tmp_path.write_text("\n".join(lines) + "\n")
-        tmp_path.replace(path)
+        atomic_write_text(path, "\n".join(lines) + "\n")
 
         logger.debug(f"Session saved: {session.key} ({len(session.messages)} messages)")
 

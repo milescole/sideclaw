@@ -29,6 +29,8 @@ def test_append_history(store, workspace):
     content = (workspace / "memory" / "HISTORY.md").read_text()
     assert "weather" in content
     assert "Python async" in content
+    leftovers = list((workspace / "memory").glob(".HISTORY.md.*.tmp"))
+    assert leftovers == []
 
 
 def test_get_memory_context_empty(store):
@@ -40,3 +42,11 @@ def test_get_memory_context_with_data(store):
     store.write_long_term("User likes cats.")
     ctx = store.get_memory_context()
     assert "User likes cats" in ctx
+
+
+def test_write_long_term_cleans_up_temp_file(store, workspace):
+    store.write_long_term("User prefers atomic writes.")
+
+    assert (workspace / "memory" / "MEMORY.md").read_text() == "User prefers atomic writes."
+    leftovers = list((workspace / "memory").glob(".MEMORY.md.*.tmp"))
+    assert leftovers == []
