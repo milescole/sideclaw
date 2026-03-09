@@ -84,3 +84,40 @@ def test_get_history_respects_last_consolidated(manager):
     history = s.get_history(max_messages=100)
     assert len(history) == 4
     assert history[0]["content"] == "msg 6"
+
+
+def test_get_or_create_quarantines_unreadable_session_file(session_dir):
+    broken_path = session_dir / "cli__user1.jsonl"
+    session_dir.mkdir(parents=True, exist_ok=True)
+    broken_path.write_text("{not json")
+
+    manager = SessionManager(session_dir)
+    session = manager.get_or_create("cli:user1")
+
+    assert session.key == "cli:user1"
+    assert session.messages == []
+    assert broken_path.exists() is False
+
+    quarantined = list((session_dir / "quarantine").glob("cli__user1-*.jsonl"))
+    assert len(quarantined) == 1
+    assert quarantined[0].read_text() == "{not json"
+
+
+def test_get_or_create_quarantines_partial_corruption_and_salvages_messages(session_dir):
+    session_dir.mkdir(parents=True, exist_ok=True)
+    broken_path = session_dir / "telegram__123.jsonl"
+    broken_path.write_text(
+        '{"_type":"metadata","created_at":"2026-03-08T00:00:00+00:00","updated_at":"2026-03-08T00:00:00+00:00","last_consolidated":0}\n'
+        '{"role":"user","content":"hello"}\n'
+        "{broken\n"
+        '{"role":"assistant","content":"world"}\n'
+    )
+
+    manager = SessionManager(session_dir)
+    session = manager.get_or_create("telegram:123")
+
+    assert [msg["content"] for msg in session.messages] == ["hello", "world"]
+    assert broken_path.exists() is False
+
+    quarantined = list((session_dir / "quarantine").glob("telegram__123-*.jsonl"))
+    assert len(quarantined) == 1
