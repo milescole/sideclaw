@@ -53,6 +53,9 @@ class WebSearchProvider(StrEnum):
 class ToolsConfig(BaseModel):
     """Tool configurations."""
 
+    browser_enabled: bool = False
+    browser_command_timeout: int = Field(default=30, ge=1)
+    browser_session_timeout: int = Field(default=300, ge=30)
     exec_enabled: bool = False
     exec_timeout: int = 60
     web_search_provider: WebSearchProvider | None = None

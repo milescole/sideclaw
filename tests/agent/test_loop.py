@@ -246,6 +246,33 @@ def test_register_default_tools_includes_web_search_when_configured(
     assert agent._registry.has("web_search") is True
 
 
+def test_register_default_tools_includes_browser_when_enabled(
+    monkeypatch,
+    config,
+    bus,
+    mock_provider,
+    workspace,
+):
+    from sideclaw.browser.service import BrowserService
+
+    def requirements_met(_self) -> bool:
+        return True
+
+    monkeypatch.setattr(BrowserService, "requirements_met", requirements_met)
+    config.tools = ToolsConfig(browser_enabled=True)
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("browser") is True
+
+
 async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):
     configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
     try:

@@ -65,6 +65,7 @@ sideclaw/
 - [`uv`](https://docs.astral.sh/uv/) for dependency and environment management
 - OpenRouter API key for live model calls
 - Optional: Telegram bot token for gateway mode
+- Optional: `playwright` browser install for browser automation (`uv run playwright install`)
 
 ## Quick Start
 
@@ -148,7 +149,7 @@ Core configuration sections:
 - `agent`: model, workspace, token/temperature defaults, memory window
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
-- `tools`: `exec_enabled`, shell timeout, and web search API key
+- `tools`: browser enablement, shell exec, web search provider/key, and other tool-specific flags
 - `cron`: scheduler enable flag and polling interval
 
 Workspace defaults to:
@@ -172,7 +173,8 @@ Onboarding creates:
 - `edit_file`: single text replacement in a file
 - `list_dir`: list directory entries
 - `exec`: optional shell access, disabled by default and intended only for trusted local deployments
-- `web_search`: Brave Search API integration
+- `browser`: optional Playwright-backed browser automation for navigation, snapshots, screenshots, clicks, typing, and tab control
+- `web_search`: optional web search integration, only registered when provider + API key are configured
 - `web_fetch`: fetch raw URL text
 - `save_memory`: update long-term memory store
 - `cron`: add/list/remove/enable/disable recurring jobs for the current chat

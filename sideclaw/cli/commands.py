@@ -143,10 +143,17 @@ def onboard() -> None:
             config.tools.web_search_provider = WebSearchProvider.brave
             config.tools.web_search_api_key = search_key
         else:
-            console.print("[yellow]Web search not configured; leaving web_search disabled.[/yellow]")
+            console.print(
+                "[yellow]Web search not configured; leaving web_search "
+                "disabled.[/yellow]"
+            )
             config.tools.web_search_provider = None
             config.tools.web_search_api_key = None
 
+    config.tools.browser_enabled = typer.confirm(
+        "Enable browser automation?",
+        default=config.tools.browser_enabled,
+    )
     config.tools.exec_enabled = typer.confirm(
         "Enable shell exec? Only do this on trusted local deployments.",
         default=config.tools.exec_enabled,
@@ -211,9 +218,16 @@ def status() -> None:
         "(trusted local deployments only)"
     )
     if config.tools.web_search_provider and config.tools.web_search_api_key:
-        console.print(f"Web search: [green]configured[/green] ({config.tools.web_search_provider.value})")
+        console.print(
+            "Web search: [green]configured[/green] "
+            f"({config.tools.web_search_provider.value})"
+        )
     else:
         console.print("Web search: [dim]not configured[/dim]")
+    console.print(
+        "Browser automation: "
+        f"{'[green]enabled[/green]' if config.tools.browser_enabled else '[dim]disabled[/dim]'}"
+    )
 
     if config.providers.openrouter:
         key = config.providers.openrouter.api_key

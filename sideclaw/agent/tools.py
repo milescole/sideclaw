@@ -3,9 +3,11 @@
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from sideclaw.browser import BrowserService
 from sideclaw.config.schema import Config
 from sideclaw.session.manager import SessionManager
 from sideclaw.tools.base import Tool
+from sideclaw.tools.browser import BrowserTool
 from sideclaw.tools.clarify import ClarifyTool
 from sideclaw.tools.cron import CronTool
 from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
@@ -38,6 +40,15 @@ def build_default_tool_registry(
 
     for tool in _build_core_tools(workspace=workspace):
         registry.register(tool)
+
+    if config.tools.browser_enabled:
+        browser = BrowserService(
+            workspace,
+            command_timeout=config.tools.browser_command_timeout,
+            inactivity_timeout_seconds=config.tools.browser_session_timeout,
+        )
+        if browser.requirements_met():
+            registry.register(BrowserTool(browser))
 
     if config.tools.exec_enabled:
         registry.register(ExecTool(workspace=workspace, timeout=config.tools.exec_timeout))
