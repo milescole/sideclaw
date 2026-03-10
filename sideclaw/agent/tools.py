@@ -41,7 +41,16 @@ def build_default_tool_registry(
     if config.tools.exec_enabled:
         registry.register(ExecTool(workspace=workspace, timeout=config.tools.exec_timeout))
 
-    registry.register(WebSearchTool(api_key=config.tools.web_search_api_key))
+    if (
+        config.tools.web_search_provider is not None
+        and config.tools.web_search_api_key is not None
+    ):
+        registry.register(
+            WebSearchTool(
+                provider=config.tools.web_search_provider,
+                api_key=config.tools.web_search_api_key,
+            )
+        )
 
     if cron_service is not None:
         registry.register(CronTool(cron_service))

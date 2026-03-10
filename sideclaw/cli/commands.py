@@ -19,6 +19,7 @@ from sideclaw.config.schema import (
     OpenRouterConfig,
     ProvidersConfig,
     TelegramConfig,
+    WebSearchProvider,
 )
 from sideclaw.runtime.models import ApprovalScope
 from sideclaw.utils.redact import configure_logging
@@ -113,6 +114,44 @@ def onboard() -> None:
         else:
             config.providers.openrouter = OpenRouterConfig(api_key=api_key)
 
+    search_configured = (
+        config.tools.web_search_provider is not None and config.tools.web_search_api_key is not None
+    )
+    configure_web_search = typer.confirm(
+        "Configure web search?",
+        default=search_configured,
+    )
+    if configure_web_search:
+        provider_default = (
+            config.tools.web_search_provider.value
+            if config.tools.web_search_provider is not None
+            else WebSearchProvider.brave.value
+        )
+        provider_raw = typer.prompt(
+            "Web search provider",
+            default=provider_default,
+        ).strip().lower()
+        existing_search_key = config.tools.web_search_api_key or ""
+        search_key_prompt = (
+            "Web search API key (leave blank to keep existing)"
+            if existing_search_key
+            else "Web search API key"
+        )
+        search_key_input = typer.prompt(search_key_prompt, default="", hide_input=True).strip()
+        search_key = search_key_input or existing_search_key
+        if provider_raw == WebSearchProvider.brave.value and search_key:
+            config.tools.web_search_provider = WebSearchProvider.brave
+            config.tools.web_search_api_key = search_key
+        else:
+            console.print("[yellow]Web search not configured; leaving web_search disabled.[/yellow]")
+            config.tools.web_search_provider = None
+            config.tools.web_search_api_key = None
+
+    config.tools.exec_enabled = typer.confirm(
+        "Enable shell exec? Only do this on trusted local deployments.",
+        default=config.tools.exec_enabled,
+    )
+
     config.agent.model = typer.prompt("Default model", default=config.agent.model).strip()
     config.agent.workspace = typer.prompt("Workspace path", default=config.agent.workspace).strip()
 
@@ -171,6 +210,10 @@ def status() -> None:
         f"Shell exec: {'enabled' if config.tools.exec_enabled else 'disabled'} "
         "(trusted local deployments only)"
     )
+    if config.tools.web_search_provider and config.tools.web_search_api_key:
+        console.print(f"Web search: [green]configured[/green] ({config.tools.web_search_provider.value})")
+    else:
+        console.print("Web search: [dim]not configured[/dim]")
 
     if config.providers.openrouter:
         key = config.providers.openrouter.api_key

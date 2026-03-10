@@ -15,6 +15,7 @@ from sideclaw.config.schema import (
     OpenRouterConfig,
     ProvidersConfig,
     ToolsConfig,
+    WebSearchProvider,
 )
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
 from sideclaw.runtime.approval import configure, get_pending
@@ -202,6 +203,7 @@ def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provi
     assert agent._registry.has("edit_file")
     assert agent._registry.has("list_dir")
     assert agent._registry.has("exec") is False
+    assert agent._registry.has("web_search") is False
     assert agent._registry.has("workspace_read")
     assert agent._registry.has("workspace_tree")
 
@@ -219,6 +221,28 @@ def test_register_default_tools_includes_exec_when_enabled(config, bus, mock_pro
     agent.register_default_tools()
 
     assert agent._registry.has("exec") is True
+
+def test_register_default_tools_includes_web_search_when_configured(
+    config,
+    bus,
+    mock_provider,
+    workspace,
+):
+    config.tools = ToolsConfig(
+        web_search_provider=WebSearchProvider.brave,
+        web_search_api_key="brave_test_key",
+    )
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("web_search") is True
 
 
 async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):

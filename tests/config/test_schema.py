@@ -10,6 +10,7 @@ from sideclaw.config.schema import (
     ProvidersConfig,
     TelegramConfig,
     ToolsConfig,
+    WebSearchProvider,
 )
 
 
@@ -46,7 +47,14 @@ def test_tools_config_defaults():
     tools = ToolsConfig()
     assert tools.exec_enabled is False
     assert tools.exec_timeout == 60
+    assert tools.web_search_provider is None
     assert tools.web_search_api_key is None
+
+
+def test_tools_config_accepts_web_search_provider():
+    tools = ToolsConfig(web_search_provider=WebSearchProvider.brave, web_search_api_key="key")
+    assert tools.web_search_provider == WebSearchProvider.brave
+    assert tools.web_search_api_key == "key"
 
 
 def test_cron_config_defaults():

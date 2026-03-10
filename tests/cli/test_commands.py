@@ -49,7 +49,11 @@ def test_approval_config_for_gateway_forces_channel_prompt() -> None:
 def test_onboard_command(tmp_path: Path) -> None:
     with patch("sideclaw.cli.commands.get_config_path", return_value=tmp_path / "config.json"):
         with patch("sideclaw.cli.commands.DEFAULT_WORKSPACE", tmp_path / "workspace"):
-            result = runner.invoke(app, ["onboard"], input="\nopenai/gpt-4o-mini\n\n\n")
+            result = runner.invoke(
+                app,
+                ["onboard"],
+                input="\n\nn\nn\nopenai/gpt-4o-mini\n\nn\n",
+            )
             assert result.exit_code == 0
             assert (tmp_path / "workspace" / "AGENTS.md").exists()
             assert (tmp_path / "workspace" / "docs" / "index.md").exists()
@@ -67,7 +71,7 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
     save_config(existing, config_path)
 
     with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
-        result = runner.invoke(app, ["onboard"], input="\n\n\n\n\n\n")
+        result = runner.invoke(app, ["onboard"], input="\n\n\n\n\n\n\n")
         assert result.exit_code == 0
 
     merged = load_config(config_path)
@@ -78,6 +82,22 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
     assert merged.channels.telegram is not None
     assert merged.channels.telegram.token == "123:abc"
     assert merged.channels.telegram.allow_from == ["42"]
+
+def test_onboard_captures_web_search_configuration(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+
+    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
+        with patch("sideclaw.cli.commands.DEFAULT_WORKSPACE", tmp_path / "workspace"):
+            result = runner.invoke(
+                app,
+                ["onboard"],
+                input="sk-or-test\ny\nbrave\nbrave_test_key\nn\nopenai/gpt-4o-mini\n\nn\n",
+            )
+
+    assert result.exit_code == 0
+    config = load_config(config_path)
+    assert config.tools.web_search_provider == "brave"
+    assert config.tools.web_search_api_key == "brave_test_key"
 
 
 def test_cron_add_list_and_remove_commands(tmp_path: Path) -> None:

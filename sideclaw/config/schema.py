@@ -44,11 +44,18 @@ class ChannelsConfig(BaseModel):
     send_tool_hints: bool = True
 
 
+class WebSearchProvider(StrEnum):
+    """Supported web search providers."""
+
+    brave = "brave"
+
+
 class ToolsConfig(BaseModel):
     """Tool configurations."""
 
     exec_enabled: bool = False
     exec_timeout: int = 60
+    web_search_provider: WebSearchProvider | None = None
     web_search_api_key: str | None = None
 
 
