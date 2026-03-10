@@ -252,6 +252,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
     from sideclaw.cron import CronService
     from sideclaw.providers.openrouter import OpenRouterProvider
     from sideclaw.runtime.approval import configure as configure_approval
+    from sideclaw.runtime.clarify import reset_clarify_callback, set_clarify_callback
     from sideclaw.session.manager import SessionManager
 
     workspace = config.workspace_path
@@ -280,9 +281,22 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
     configure_approval(_approval_config_for_runtime(config.approval, channel_prompt=False))
     agent_loop.register_default_tools()
 
+    def _cli_clarify(question: str, choices: list[str] | None) -> str:
+        console.print()
+        console.print(f"[bold yellow]Clarify[/bold yellow] {question}")
+        if choices:
+            for index, choice in enumerate(choices, start=1):
+                console.print(f"  {index}. {choice}")
+            console.print("  0. Other")
+        return console.input("[bold cyan]? [/bold cyan]").strip()
+
     if single_message:
         msg = InboundMessage(channel="cli", chat_id="cli", sender_id="cli", text=single_message)
-        response = await agent_loop.process_message(msg)
+        clarify_token = set_clarify_callback(_cli_clarify)
+        try:
+            response = await agent_loop.process_message(msg)
+        finally:
+            reset_clarify_callback(clarify_token)
         console.print(Markdown(response.text))
         return
 
@@ -307,7 +321,11 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
             continue
 
         msg = InboundMessage(channel="cli", chat_id="cli", sender_id="cli", text=user_input)
-        response = await agent_loop.process_message(msg)
+        clarify_token = set_clarify_callback(_cli_clarify)
+        try:
+            response = await agent_loop.process_message(msg)
+        finally:
+            reset_clarify_callback(clarify_token)
         console.print()
         console.print(Markdown(response.text))
         console.print()

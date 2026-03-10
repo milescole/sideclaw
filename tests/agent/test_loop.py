@@ -198,6 +198,7 @@ def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provi
 
     agent.register_default_tools()
 
+    assert agent._registry.has("clarify")
     assert agent._registry.has("read_file")
     assert agent._registry.has("write_file")
     assert agent._registry.has("edit_file")

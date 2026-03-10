@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from sideclaw.config.schema import Config
 from sideclaw.session.manager import SessionManager
 from sideclaw.tools.base import Tool
+from sideclaw.tools.clarify import ClarifyTool
 from sideclaw.tools.cron import CronTool
 from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
 from sideclaw.tools.memory import (
@@ -65,6 +66,7 @@ def _build_core_tools(*, workspace: Path) -> list[Tool]:
         WriteFileTool(workspace),
         EditFileTool(workspace),
         ListDirTool(workspace),
+        ClarifyTool(),
         WebFetchTool(),
         DocsGrepTool(workspace),
         MemorySearchTool(workspace),
