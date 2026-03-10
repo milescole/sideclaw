@@ -109,6 +109,7 @@ class SkillsLoader:
             score += self._match_terms(frontmatter.get("tags"), selection_text) * 3
             score += self._match_terms(frontmatter.get("read_when"), selection_text) * 4
             score += self._match_terms(frontmatter.get("summary"), selection_text) * 3
+            score += self._match_terms(frontmatter.get("description"), selection_text) * 3
             score += self._term_overlap_score(display_path, selection_terms) * 2
 
             headings = "\n".join(
