@@ -200,6 +200,30 @@ def onboard() -> None:
         "Enable browser automation?",
         default=config.tools.browser_enabled,
     )
+    config.tools.tts.enabled = typer.confirm(
+        "Enable text-to-speech?",
+        default=config.tools.tts.enabled,
+    )
+    if config.tools.tts.enabled:
+        config.tools.tts.provider = typer.prompt(
+            "TTS provider",
+            default=config.tools.tts.provider,
+        ).strip()
+        if config.tools.tts.provider.lower() == "elevenlabs":
+            existing_elevenlabs_key = config.tools.tts.elevenlabs_api_key or ""
+            elevenlabs_key_prompt = (
+                "ElevenLabs API key (leave blank to keep existing)"
+                if existing_elevenlabs_key
+                else "ElevenLabs API key"
+            )
+            elevenlabs_key_input = typer.prompt(
+                elevenlabs_key_prompt,
+                default="",
+                hide_input=True,
+            ).strip()
+            config.tools.tts.elevenlabs_api_key = (
+                elevenlabs_key_input or existing_elevenlabs_key or None
+            )
     config.tools.exec_enabled = typer.confirm(
         "Enable shell exec? Only do this on trusted local deployments.",
         default=config.tools.exec_enabled,
@@ -283,6 +307,15 @@ def status() -> None:
     console.print(
         "Browser automation: "
         f"{'[green]enabled[/green]' if config.tools.browser_enabled else '[dim]disabled[/dim]'}"
+    )
+    tts_status = (
+        f"[green]enabled[/green] ({config.tools.tts.provider})"
+        if config.tools.tts.enabled
+        else "[dim]disabled[/dim]"
+    )
+    console.print(
+        "Text-to-speech: "
+        f"{tts_status}"
     )
 
     if config.providers.openrouter:

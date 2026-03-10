@@ -50,6 +50,20 @@ class WebSearchProvider(StrEnum):
     brave = "brave"
 
 
+class TTSConfig(BaseModel):
+    """Text-to-speech configuration."""
+
+    enabled: bool = False
+    provider: str = "edge"
+    max_text_length: int = Field(default=4_000, ge=1)
+    edge_voice: str = "en-US-AriaNeural"
+    elevenlabs_api_key: str | None = None
+    elevenlabs_voice_id: str = "EXAVITQu4vr4xnSDxMaL"
+    elevenlabs_model_id: str = "eleven_flash_v2_5"
+    openai_model: str = "gpt-4o-mini-tts"
+    openai_voice: str = "alloy"
+
+
 class ToolsConfig(BaseModel):
     """Tool configurations."""
 
@@ -64,6 +78,7 @@ class ToolsConfig(BaseModel):
     fal_enable_upscaling: bool = False
     fal_upscaler_model: str = "fal-ai/clarity-upscaler"
     fal_upscale_factor: int = Field(default=2, ge=1, le=4)
+    tts: TTSConfig = Field(default_factory=TTSConfig)
     web_search_provider: WebSearchProvider | None = None
     web_search_api_key: str | None = None
 

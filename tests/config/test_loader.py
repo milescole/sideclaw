@@ -38,6 +38,11 @@ def test_load_config_from_json(tmp_path):
             "fal_enable_upscaling": True,
             "fal_upscaler_model": "fal-ai/custom-upscaler",
             "fal_upscale_factor": 3,
+            "tts": {
+                "enabled": True,
+                "provider": "elevenlabs",
+                "elevenlabs_api_key": "el_test_key",
+            },
         },
     }
     path.write_text(json.dumps(data))
@@ -50,3 +55,6 @@ def test_load_config_from_json(tmp_path):
     assert cfg.tools.fal_enable_upscaling is True
     assert cfg.tools.fal_upscaler_model == "fal-ai/custom-upscaler"
     assert cfg.tools.fal_upscale_factor == 3
+    assert cfg.tools.tts.enabled is True
+    assert cfg.tools.tts.provider == "elevenlabs"
+    assert cfg.tools.tts.elevenlabs_api_key == "el_test_key"

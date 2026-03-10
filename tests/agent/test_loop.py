@@ -16,6 +16,7 @@ from sideclaw.config.schema import (
     OpenRouterConfig,
     ProvidersConfig,
     TelegramConfig,
+    TTSConfig,
     ToolsConfig,
     WebSearchProvider,
 )
@@ -318,6 +319,26 @@ def test_register_default_tools_includes_send_message_when_telegram_configured(
     agent.register_default_tools()
 
     assert agent._registry.has("send_message") is True
+
+
+def test_register_default_tools_includes_tts_when_enabled(
+    config,
+    bus,
+    mock_provider,
+    workspace,
+):
+    config.tools = ToolsConfig(tts=TTSConfig(enabled=True, provider="edge"))
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("text_to_speech") is True
 
 
 async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):

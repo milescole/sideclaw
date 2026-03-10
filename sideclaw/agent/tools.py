@@ -27,6 +27,7 @@ from sideclaw.tools.memory import (
 from sideclaw.tools.messaging import SendMessageTool
 from sideclaw.tools.registry import ToolRegistry
 from sideclaw.tools.shell import ExecTool
+from sideclaw.tools.tts import TextToSpeechTool
 from sideclaw.tools.web import WebFetchTool, WebSearchTool
 
 if TYPE_CHECKING:
@@ -76,6 +77,14 @@ def build_default_tool_registry(
             SendMessageTool(
                 config=config,
                 session_manager=session_manager,
+            )
+        )
+
+    if config.tools.tts.enabled:
+        registry.register(
+            TextToSpeechTool(
+                workspace=workspace,
+                config=config.tools.tts,
             )
         )
 

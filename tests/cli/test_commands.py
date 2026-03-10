@@ -1,7 +1,7 @@
+import asyncio
 from pathlib import Path
 from unittest.mock import patch
 
-import asyncio
 from typer.testing import CliRunner
 
 from sideclaw.bus.messages import InboundMessage
@@ -22,7 +22,7 @@ from sideclaw.config.schema import (
     TelegramConfig,
 )
 from sideclaw.runtime.approval import check_approval, configure, set_pending
-from sideclaw.runtime.models import ApprovalRequirement, ApprovalRequest
+from sideclaw.runtime.models import ApprovalRequest, ApprovalRequirement
 from sideclaw.session.manager import SessionManager
 
 runner = CliRunner()
@@ -52,7 +52,7 @@ def test_onboard_command(tmp_path: Path) -> None:
             result = runner.invoke(
                 app,
                 ["onboard"],
-                input="\n\nn\nn\nopenai/gpt-4o-mini\n\nn\n",
+                input="\nn\nn\nn\nn\nn\nopenai/gpt-4o-mini\n\nn\n",
             )
             assert result.exit_code == 0
             assert (tmp_path / "workspace" / "AGENTS.md").exists()
@@ -71,7 +71,7 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
     save_config(existing, config_path)
 
     with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
-        result = runner.invoke(app, ["onboard"], input="\n\n\n\n\n\n\n")
+        result = runner.invoke(app, ["onboard"], input="\n" * 11)
         assert result.exit_code == 0
 
     merged = load_config(config_path)
@@ -83,6 +83,7 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
     assert merged.channels.telegram.token == "123:abc"
     assert merged.channels.telegram.allow_from == ["42"]
 
+
 def test_onboard_captures_web_search_configuration(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
 
@@ -91,7 +92,7 @@ def test_onboard_captures_web_search_configuration(tmp_path: Path) -> None:
             result = runner.invoke(
                 app,
                 ["onboard"],
-                input="sk-or-test\ny\nbrave\nbrave_test_key\nn\nopenai/gpt-4o-mini\n\nn\n",
+                input="sk-or-test\ny\nbrave\nbrave_test_key\nn\nn\nn\nn\nopenai/gpt-4o-mini\n\nn\n",
             )
 
     assert result.exit_code == 0
@@ -331,7 +332,9 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
     first = InboundMessage(channel="telegram", chat_id="1", sender_id="1", text="first")
     second = InboundMessage(channel="telegram", chat_id="2", sender_id="2", text="second")
 
-    first_task = asyncio.create_task(_handle_message(agent_loop, [channel], manager, semaphore, first))
+    first_task = asyncio.create_task(
+        _handle_message(agent_loop, [channel], manager, semaphore, first)
+    )
     await asyncio.wait_for(agent_loop.first_entered.wait(), timeout=1)
 
     second_task = asyncio.create_task(

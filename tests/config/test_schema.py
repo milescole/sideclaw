@@ -54,6 +54,7 @@ def test_tools_config_defaults():
     assert tools.fal_upscale_factor == 2
     assert tools.web_search_provider is None
     assert tools.web_search_api_key is None
+    assert tools.tts.elevenlabs_api_key is None
 
 
 def test_tools_config_accepts_web_search_provider():

@@ -149,7 +149,7 @@ Core configuration sections:
 - `agent`: model, workspace, token/temperature defaults, memory window
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
-- `tools`: browser enablement, fal.ai image key/model/upscaler settings, shell exec, web search provider/key, and other tool-specific flags
+- `tools`: browser enablement, fal.ai image key/model/upscaler settings, shell exec, text-to-speech settings, web search provider/key, and other tool-specific flags
 - `cron`: scheduler enable flag and polling interval
 
 Workspace defaults to:
@@ -176,6 +176,7 @@ Onboarding creates:
 - `browser`: optional Playwright-backed browser automation for navigation, snapshots, screenshots, clicks, typing, and tab control
 - `image_generation`: optional fal.ai image generation with model-aware request shaping and optional upscaling, only registered when a fal API key is configured
 - `send_message`: optional Telegram delivery tool for sending text or files to known chats
+- `text_to_speech`: optional artifact-generating speech synthesis with configurable provider settings
 - `web_search`: optional web search integration, only registered when provider + API key are configured
 - `web_fetch`: fetch raw URL text
 - `save_memory`: update long-term memory store
