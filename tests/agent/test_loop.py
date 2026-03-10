@@ -273,6 +273,29 @@ def test_register_default_tools_includes_browser_when_enabled(
     assert agent._registry.has("browser") is True
 
 
+def test_register_default_tools_includes_image_when_configured(
+    config,
+    bus,
+    mock_provider,
+    workspace,
+):
+    config.tools = ToolsConfig(
+        fal_api_key="fal_test_key",
+        fal_model="fal-ai/flux-pro/v1.1",
+    )
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("image_generation") is True
+
+
 async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):
     configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
     try:

@@ -1,7 +1,6 @@
 """CLI entry points for SideClaw."""
 
 import asyncio
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +21,7 @@ from sideclaw.config.schema import (
     WebSearchProvider,
 )
 from sideclaw.runtime.models import ApprovalScope
+from sideclaw.tools.image import normalize_fal_model_id
 from sideclaw.utils.redact import configure_logging
 from sideclaw.workspace import sync_workspace_templates
 
@@ -150,6 +150,52 @@ def onboard() -> None:
             config.tools.web_search_provider = None
             config.tools.web_search_api_key = None
 
+    configure_image_generation = typer.confirm(
+        "Configure fal.ai image generation?",
+        default=bool(config.tools.fal_api_key),
+    )
+    if configure_image_generation:
+        existing_fal_key = config.tools.fal_api_key or ""
+        existing_fal_model = config.tools.fal_model
+        fal_key_prompt = (
+            "fal.ai API key (leave blank to keep existing)"
+            if existing_fal_key
+            else "fal.ai API key"
+        )
+        fal_key_input = typer.prompt(
+            fal_key_prompt,
+            default="",
+            hide_input=True,
+        ).strip()
+        fal_key = fal_key_input or existing_fal_key
+        if fal_key:
+            config.tools.fal_api_key = fal_key
+            selected_fal_model = (
+                typer.prompt(
+                    "fal.ai image model",
+                    default=existing_fal_model,
+                ).strip()
+                or existing_fal_model
+            )
+            config.tools.fal_model = normalize_fal_model_id(
+                selected_fal_model
+            )
+            config.tools.fal_enable_upscaling = typer.confirm(
+                "Enable automatic fal.ai upscaling?",
+                default=config.tools.fal_enable_upscaling,
+            )
+            if config.tools.fal_enable_upscaling:
+                config.tools.fal_upscaler_model = typer.prompt(
+                    "fal.ai upscaler model",
+                    default=config.tools.fal_upscaler_model,
+                ).strip() or config.tools.fal_upscaler_model
+        else:
+            console.print(
+                "[yellow]Image generation not configured; leaving "
+                "image generation disabled.[/yellow]"
+            )
+            config.tools.fal_api_key = None
+
     config.tools.browser_enabled = typer.confirm(
         "Enable browser automation?",
         default=config.tools.browser_enabled,
@@ -224,6 +270,16 @@ def status() -> None:
         )
     else:
         console.print("Web search: [dim]not configured[/dim]")
+    console.print(
+        "Image generation: "
+        + (
+            "[green]configured[/green] "
+            f"({config.tools.fal_model}; "
+            f"{'upscaling on' if config.tools.fal_enable_upscaling else 'upscaling off'})"
+            if config.tools.fal_api_key
+            else "[dim]disabled[/dim]"
+        )
+    )
     console.print(
         "Browser automation: "
         f"{'[green]enabled[/green]' if config.tools.browser_enabled else '[dim]disabled[/dim]'}"

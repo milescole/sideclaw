@@ -47,6 +47,11 @@ def test_tools_config_defaults():
     tools = ToolsConfig()
     assert tools.exec_enabled is False
     assert tools.exec_timeout == 60
+    assert tools.fal_model == "fal-ai/nano-banana-2"
+    assert tools.fal_client_timeout == 180.0
+    assert tools.fal_enable_upscaling is False
+    assert tools.fal_upscaler_model == "fal-ai/clarity-upscaler"
+    assert tools.fal_upscale_factor == 2
     assert tools.web_search_provider is None
     assert tools.web_search_api_key is None
 

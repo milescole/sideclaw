@@ -58,6 +58,12 @@ class ToolsConfig(BaseModel):
     browser_session_timeout: int = Field(default=300, ge=30)
     exec_enabled: bool = False
     exec_timeout: int = 60
+    fal_api_key: str | None = None
+    fal_model: str = "fal-ai/nano-banana-2"
+    fal_client_timeout: float = Field(default=180.0, gt=0)
+    fal_enable_upscaling: bool = False
+    fal_upscaler_model: str = "fal-ai/clarity-upscaler"
+    fal_upscale_factor: int = Field(default=2, ge=1, le=4)
     web_search_provider: WebSearchProvider | None = None
     web_search_api_key: str | None = None
 

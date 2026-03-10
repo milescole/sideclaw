@@ -10,7 +10,13 @@ from sideclaw.tools.base import Tool
 from sideclaw.tools.browser import BrowserTool
 from sideclaw.tools.clarify import ClarifyTool
 from sideclaw.tools.cron import CronTool
-from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from sideclaw.tools.filesystem import (
+    EditFileTool,
+    ListDirTool,
+    ReadFileTool,
+    WriteFileTool,
+)
+from sideclaw.tools.image import ImageGenerationTool, UpscalingConfig
 from sideclaw.tools.memory import (
     DocsGrepTool,
     MemorySearchTool,
@@ -49,6 +55,20 @@ def build_default_tool_registry(
         )
         if browser.requirements_met():
             registry.register(BrowserTool(browser))
+
+    if config.tools.fal_api_key:
+        registry.register(
+            ImageGenerationTool(
+                api_key=config.tools.fal_api_key,
+                model_id=config.tools.fal_model,
+                client_timeout=config.tools.fal_client_timeout,
+                upscaling=UpscalingConfig(
+                    enabled=config.tools.fal_enable_upscaling,
+                    model_id=config.tools.fal_upscaler_model,
+                    factor=config.tools.fal_upscale_factor,
+                ),
+            )
+        )
 
     if config.tools.exec_enabled:
         registry.register(ExecTool(workspace=workspace, timeout=config.tools.exec_timeout))
