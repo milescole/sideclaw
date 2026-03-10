@@ -7,6 +7,7 @@ import json_repair
 from loguru import logger
 
 from sideclaw.agent.prompt_builder import PromptBuilder
+from sideclaw.agent.tools import build_default_tool_registry
 from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
@@ -74,35 +75,12 @@ class AgentLoop:
 
     def register_default_tools(self) -> None:
         """Register the built-in tool set."""
-        from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
-        from sideclaw.tools.cron import CronTool
-        from sideclaw.tools.memory import (
-            DocsGrepTool,
-            MemorySearchTool,
-            MemoryWriteTool,
-            WorkspaceReadTool,
-            WorkspaceTreeTool,
+        self._registry = build_default_tool_registry(
+            config=self._config,
+            workspace=self._workspace,
+            session_manager=self._session_manager,
+            cron_service=self._cron_service,
         )
-        from sideclaw.tools.shell import ExecTool
-        from sideclaw.tools.web import WebFetchTool, WebSearchTool
-
-        self._registry.register(ReadFileTool(self._workspace))
-        self._registry.register(WriteFileTool(self._workspace))
-        self._registry.register(EditFileTool(self._workspace))
-        self._registry.register(ListDirTool(self._workspace))
-        if self._config.tools.exec_enabled:
-            self._registry.register(
-                ExecTool(workspace=self._workspace, timeout=self._config.tools.exec_timeout)
-            )
-        self._registry.register(WebSearchTool(api_key=self._config.tools.web_search_api_key))
-        self._registry.register(WebFetchTool())
-        self._registry.register(DocsGrepTool(self._workspace))
-        self._registry.register(MemorySearchTool(self._workspace))
-        self._registry.register(WorkspaceReadTool(self._workspace))
-        self._registry.register(WorkspaceTreeTool(self._workspace))
-        self._registry.register(MemoryWriteTool(self._workspace))
-        if self._cron_service is not None:
-            self._registry.register(CronTool(self._cron_service))
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the agent loop."""

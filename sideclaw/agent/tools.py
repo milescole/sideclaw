@@ -1,0 +1,65 @@
+"""Tool registry construction for the agent runtime."""
+
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from sideclaw.config.schema import Config
+from sideclaw.session.manager import SessionManager
+from sideclaw.tools.base import Tool
+from sideclaw.tools.cron import CronTool
+from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+from sideclaw.tools.memory import (
+    DocsGrepTool,
+    MemorySearchTool,
+    MemoryWriteTool,
+    WorkspaceReadTool,
+    WorkspaceTreeTool,
+)
+from sideclaw.tools.registry import ToolRegistry
+from sideclaw.tools.shell import ExecTool
+from sideclaw.tools.web import WebFetchTool, WebSearchTool
+
+if TYPE_CHECKING:
+    from sideclaw.cron.service import CronService
+
+
+def build_default_tool_registry(
+    *,
+    config: Config,
+    workspace: Path,
+    session_manager: SessionManager,
+    cron_service: "CronService | None" = None,
+) -> ToolRegistry:
+    """Build the default tool registry for an agent runtime."""
+    _ = session_manager
+    workspace = Path(workspace)
+    registry = ToolRegistry()
+
+    for tool in _build_core_tools(workspace=workspace):
+        registry.register(tool)
+
+    if config.tools.exec_enabled:
+        registry.register(ExecTool(workspace=workspace, timeout=config.tools.exec_timeout))
+
+    registry.register(WebSearchTool(api_key=config.tools.web_search_api_key))
+
+    if cron_service is not None:
+        registry.register(CronTool(cron_service))
+
+    return registry
+
+
+def _build_core_tools(*, workspace: Path) -> list[Tool]:
+    """Build tools that are always present."""
+    return [
+        ReadFileTool(workspace),
+        WriteFileTool(workspace),
+        EditFileTool(workspace),
+        ListDirTool(workspace),
+        WebFetchTool(),
+        DocsGrepTool(workspace),
+        MemorySearchTool(workspace),
+        WorkspaceReadTool(workspace),
+        WorkspaceTreeTool(workspace),
+        MemoryWriteTool(workspace),
+    ]
