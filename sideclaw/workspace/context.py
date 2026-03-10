@@ -135,7 +135,6 @@ class WorkspaceContextManager:
             baseline_paths.append("BOOTSTRAP.md")
         routed_paths, routing_warnings = self._rank_routed_paths(current_message, history or [], seen)
         warnings.extend(routing_warnings)
-
         for relative_path in [*baseline_paths, *routed_paths]:
             if relative_path in seen:
                 continue
@@ -247,6 +246,8 @@ class WorkspaceContextManager:
         warnings: list[str] = []
         selection_terms = self._extract_terms(selection_text)
         docs_dir = self._workspace / "docs"
+        if not docs_dir.exists():
+            return [], []
         for path in sorted(docs_dir.rglob("*.md")):
             relative_path = str(path.relative_to(self._workspace))
             if relative_path in seen:

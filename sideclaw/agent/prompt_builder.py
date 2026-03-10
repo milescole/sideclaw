@@ -5,6 +5,7 @@ from math import ceil
 from pathlib import Path
 from typing import Any
 
+from sideclaw.agent.skills import SkillsLoader
 from sideclaw.workspace.context import WorkspaceContextManager
 
 TRUNCATION_MARKER = "\n... (truncated for context budget)"
@@ -31,6 +32,7 @@ class PromptBuilder:
     ) -> None:
         self._workspace = workspace
         self._max_context_chars = max_context_chars
+        self._skills = SkillsLoader(workspace)
         self._workspace_context = WorkspaceContextManager(
             workspace,
             max_context_chars=max_context_chars,
@@ -50,6 +52,10 @@ class PromptBuilder:
     ) -> str:
         """Build the full system prompt."""
         parts = [BASE_IDENTITY]
+        skills_summary = self._skills.build_skills_summary()
+        if skills_summary:
+            parts.append(skills_summary)
+
         bundle = self._workspace_context.build_bundle(
             current_message=current_message,
             history=history or [],
@@ -57,6 +63,20 @@ class PromptBuilder:
         rendered = bundle.render()
         if rendered:
             parts.append(rendered)
+
+        loaded_skills, warnings = self._skills.load_relevant_skills(
+            current_message=current_message,
+            history=history or [],
+        )
+        if warnings:
+            parts.append("Skill warnings:\n" + "\n".join(f"- {warning}" for warning in warnings))
+        if loaded_skills:
+            parts.append(
+                "Relevant skills:\n"
+                "The following skill instructions match the current request. "
+                "Follow them when using tools.\n\n"
+                f"{loaded_skills}"
+            )
 
         return "\n\n---\n\n".join(parts)
 

@@ -52,6 +52,7 @@ sideclaw/
     memory/        # long-term memory store
     providers/     # LLM abstraction + OpenRouter implementation
     session/       # JSONL-backed session persistence
+    skills/        # built-in prompt skills
     cron/          # persisted scheduler service
     tools/         # tool base class + built-in tools
     templates/     # bootstrap identity/soul prompt files
@@ -162,6 +163,7 @@ Onboarding creates:
 - `memory/MEMORY.md` for consolidated long-term context
 - `memory/HISTORY.md` for timestamped memory events
 - `IDENTITY.md` and `SOUL.md` from built-in templates
+- `skills/cron/SKILL.md` for scheduled-task routing guidance
 
 ## Built-in Tools
 

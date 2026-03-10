@@ -75,6 +75,30 @@ def test_build_system_prompt_routes_relevant_docs_from_current_message(builder, 
     assert "Use migrations carefully." in prompt
 
 
+def test_build_system_prompt_routes_relevant_skill_from_current_message(builder, workspace):
+    skill = workspace / "skills" / "cron" / "SKILL.md"
+    skill.parent.mkdir(parents=True, exist_ok=True)
+    skill.write_text(
+        "---\n"
+        "read_when:\n"
+        "  - every friday\n"
+        "tags:\n"
+        "  - cron\n"
+        "  - meal-plan\n"
+        "---\n\n"
+        "# Cron Skill\n\n"
+        "Use cron(action=\"add\", schedule=\"0 21 * * 5\") for weekly Friday night tasks.\n"
+    )
+
+    prompt = builder.build_system_prompt(
+        current_message="Send me a new meal plan every Friday night at 9pm",
+    )
+
+    assert "<available_skills>" in prompt
+    assert "skills/cron/SKILL.md" in prompt
+    assert "weekly Friday night tasks" in prompt
+
+
 def test_build_system_prompt_excludes_non_hot_path_docs_by_default(builder, workspace):
     (workspace / "docs" / "user.md").write_text("Prefer terse answers.")
     (workspace / "docs" / "memory" / "long-term.md").write_text("Durable fact.")

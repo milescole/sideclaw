@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 WORKSPACE_TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "workspace"
+BUILTIN_SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
 
 
 def sync_workspace_templates(workspace: Path) -> list[Path]:
@@ -23,6 +24,16 @@ def sync_workspace_templates(workspace: Path) -> list[Path]:
         shutil.copy2(source, destination)
         created.append(destination)
 
+    if BUILTIN_SKILLS_DIR.exists():
+        for source in sorted(BUILTIN_SKILLS_DIR.rglob("SKILL.md")):
+            relative = source.relative_to(BUILTIN_SKILLS_DIR)
+            destination = workspace / "skills" / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.exists():
+                continue
+            shutil.copy2(source, destination)
+            created.append(destination)
+
     for relative_dir in (
         "artifacts",
         "artifacts/exports",
@@ -40,6 +51,7 @@ def sync_workspace_templates(workspace: Path) -> list[Path]:
         "docs/memory/daily-summaries",
         "docs/memory/session-summaries",
         "docs/memory/snapshots",
+        "skills",
         "sessions",
     ):
         (workspace / relative_dir).mkdir(parents=True, exist_ok=True)

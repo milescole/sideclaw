@@ -43,6 +43,7 @@ Unless explicitly requested, do not store secrets or unnecessary sensitive data 
 
 - Prefer the canonical workspace tools for workspace docs:
   `workspace_read`, `workspace_tree`, `docs_grep`, `memory_search`, `memory_write`.
+- When a specialized recurring workflow exists under `skills/`, follow it instead of improvising parameter mappings.
 - Before editing an existing canonical doc, read the current content first.
 - Update the relevant layer instead of dumping everything into long-term memory.
 - Prefer appending or section updates over destructive rewrites.

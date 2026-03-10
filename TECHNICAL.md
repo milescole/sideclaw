@@ -80,6 +80,7 @@ sequenceDiagram
    - UTC timestamp
    - channel
    - chat id
+5. Available skills summary plus relevant full skills loaded from `skills/**/*.md`
 
 Message payload sent to the provider:
 
@@ -245,6 +246,12 @@ uv run pytest
 1. Implement `Tool` subclass in `sideclaw/tools/`
 2. Register it in `AgentLoop.register_default_tools()`
 3. Add tests under `tests/tools/`
+
+### Add a new skill
+
+1. Add markdown under `sideclaw/skills/<name>/SKILL.md` for a built-in skill, or `workspace/skills/<name>/SKILL.md` for a workspace-local override
+2. Use frontmatter like `summary`, `read_when`, and `tags`
+3. Keep it procedural and tool-oriented so the skills loader can inject it when relevant
 
 ### Add a new provider
 
