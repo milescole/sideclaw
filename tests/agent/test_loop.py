@@ -10,10 +10,12 @@ from sideclaw.config.schema import (
     AgentConfig,
     ApprovalConfig,
     ApprovalMode,
+    ChannelsConfig,
     Config,
     MemoryConfig,
     OpenRouterConfig,
     ProvidersConfig,
+    TelegramConfig,
     ToolsConfig,
     WebSearchProvider,
 )
@@ -294,6 +296,28 @@ def test_register_default_tools_includes_image_when_configured(
     agent.register_default_tools()
 
     assert agent._registry.has("image_generation") is True
+
+
+def test_register_default_tools_includes_send_message_when_telegram_configured(
+    config,
+    bus,
+    mock_provider,
+    workspace,
+):
+    config.channels = ChannelsConfig(
+        telegram=TelegramConfig(token="123:telegram-token", allow_from=["*"]),
+    )
+    agent = AgentLoop(
+        config=config,
+        bus=bus,
+        provider=mock_provider,
+        session_manager=SessionManager(workspace / "sessions"),
+        workspace=workspace,
+    )
+
+    agent.register_default_tools()
+
+    assert agent._registry.has("send_message") is True
 
 
 async def test_loop_breaks_on_pending_approval(agent, bus, mock_provider):

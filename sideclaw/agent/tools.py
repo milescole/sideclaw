@@ -24,6 +24,7 @@ from sideclaw.tools.memory import (
     WorkspaceReadTool,
     WorkspaceTreeTool,
 )
+from sideclaw.tools.messaging import SendMessageTool
 from sideclaw.tools.registry import ToolRegistry
 from sideclaw.tools.shell import ExecTool
 from sideclaw.tools.web import WebFetchTool, WebSearchTool
@@ -67,6 +68,14 @@ def build_default_tool_registry(
                     model_id=config.tools.fal_upscaler_model,
                     factor=config.tools.fal_upscale_factor,
                 ),
+            )
+        )
+
+    if config.channels.telegram is not None:
+        registry.register(
+            SendMessageTool(
+                config=config,
+                session_manager=session_manager,
             )
         )
 

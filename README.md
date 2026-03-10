@@ -175,6 +175,7 @@ Onboarding creates:
 - `exec`: optional shell access, disabled by default and intended only for trusted local deployments
 - `browser`: optional Playwright-backed browser automation for navigation, snapshots, screenshots, clicks, typing, and tab control
 - `image_generation`: optional fal.ai image generation with model-aware request shaping and optional upscaling, only registered when a fal API key is configured
+- `send_message`: optional Telegram delivery tool for sending text or files to known chats
 - `web_search`: optional web search integration, only registered when provider + API key are configured
 - `web_fetch`: fetch raw URL text
 - `save_memory`: update long-term memory store
