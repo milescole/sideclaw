@@ -24,3 +24,10 @@ status: active
 - Do not guess config changes. Read the docs or local configuration first.
 - Validate important config or environment edits before applying them when possible.
 - Prefer reversible operations and make a backup before risky manual edits.
+
+## Scheduling
+
+- Use the `cron` tool when the user asks for recurring reminders or repeated agent tasks.
+- For requests like "every Friday night at 9pm", convert the request to a cron expression such as `0 21 * * 5`.
+- Use the current chat as the delivery target unless the operator specifies otherwise.
+- Do not schedule new cron jobs from inside a cron-triggered execution.

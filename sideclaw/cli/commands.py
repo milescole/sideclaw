@@ -25,6 +25,7 @@ from sideclaw.utils.redact import configure_logging
 from sideclaw.workspace import sync_workspace_templates
 
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
+cron_app = typer.Typer(help="Manage scheduled jobs")
 console = Console()
 GATEWAY_MAX_CONCURRENCY = 8
 
@@ -35,6 +36,20 @@ def _startup() -> None:
 
 
 DEFAULT_WORKSPACE = Path.home() / ".sideclaw" / "workspace"
+
+
+def _cron_store_path(workspace: Path) -> Path:
+    """Return the persisted cron job store path for a workspace."""
+    return workspace / "cron" / "jobs.json"
+
+
+def _format_timestamp(value: object) -> str:
+    """Render a timestamp for CLI output."""
+    if value is None:
+        return "-"
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
 
 
 def _approval_config_for_runtime(
@@ -59,6 +74,17 @@ def _reset_cli_session(session_manager: Any, session_key: str = "cli:cli") -> No
     session.clear()
     session_manager.save(session)
     session_manager.invalidate(session_key)
+
+
+async def _route_outbound_message(channels: list[Any], response: Any) -> bool:
+    """Send a response to the configured channel adapter."""
+    for channel in channels:
+        if channel.channel_name == response.channel:
+            await channel.send(response)
+            return True
+
+    logger.warning("No active channel adapter for outbound channel '{}'", response.channel)
+    return False
 
 
 @app.command()
@@ -166,7 +192,7 @@ def agent(
     ),
 ) -> None:
     """Run the agent in CLI mode."""
-    config = load_config()
+    config = load_config(get_config_path())
 
     if not config.providers.openrouter:
         console.print("[red]Error: OpenRouter not configured. Run 'sideclaw onboard' first.[/red]")
@@ -180,6 +206,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
     from sideclaw.agent.loop import AgentLoop
     from sideclaw.bus.messages import InboundMessage
     from sideclaw.bus.queue import MessageBus
+    from sideclaw.cron import CronService
     from sideclaw.providers.openrouter import OpenRouterProvider
     from sideclaw.runtime.approval import configure as configure_approval
     from sideclaw.session.manager import SessionManager
@@ -195,12 +222,17 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
         api_base=config.providers.openrouter.api_base,
     )
     session_manager = SessionManager(workspace / "sessions")
+    cron_service = CronService(
+        _cron_store_path(workspace),
+        poll_interval_seconds=config.cron.poll_interval_seconds,
+    )
     agent_loop = AgentLoop(
         config=config,
         bus=bus,
         provider=provider,
         session_manager=session_manager,
         workspace=workspace,
+        cron_service=cron_service,
     )
     configure_approval(_approval_config_for_runtime(config.approval, channel_prompt=False))
     agent_loop.register_default_tools()
@@ -241,7 +273,7 @@ async def _run_agent(config: Config, single_message: str | None = None) -> None:
 @app.command()
 def gateway() -> None:
     """Run as a long-running gateway with all enabled channels."""
-    config = load_config()
+    config = load_config(get_config_path())
 
     if not config.providers.openrouter:
         console.print("[red]Error: OpenRouter not configured. Run 'sideclaw onboard' first.[/red]")
@@ -253,7 +285,9 @@ def gateway() -> None:
 async def _run_gateway(config: Config) -> None:
     """Run the gateway with all enabled channels."""
     from sideclaw.agent.loop import AgentLoop
+    from sideclaw.bus.messages import InboundMessage
     from sideclaw.bus.queue import MessageBus
+    from sideclaw.cron import CronService
     from sideclaw.providers.openrouter import OpenRouterProvider
     from sideclaw.runtime.approval import configure as configure_approval
     from sideclaw.session.manager import SessionManager
@@ -269,12 +303,17 @@ async def _run_gateway(config: Config) -> None:
         api_base=config.providers.openrouter.api_base,
     )
     session_manager = SessionManager(workspace / "sessions")
+    cron_service = CronService(
+        _cron_store_path(workspace),
+        poll_interval_seconds=config.cron.poll_interval_seconds,
+    )
     agent_loop = AgentLoop(
         config=config,
         bus=bus,
         provider=provider,
         session_manager=session_manager,
         workspace=workspace,
+        cron_service=cron_service,
     )
     configure_approval(_approval_config_for_runtime(config.approval, channel_prompt=True))
     agent_loop.register_default_tools()
@@ -304,6 +343,36 @@ async def _run_gateway(config: Config) -> None:
     for ch in channels:
         await ch.start()
 
+    async def _execute_cron_job(job: Any) -> None:
+        from sideclaw.tools.cron import CronTool
+
+        if not any(channel.channel_name == job.channel for channel in channels):
+            msg = f"No active channel adapter configured for '{job.channel}'"
+            raise RuntimeError(msg)
+
+        cron_tool = agent_loop._registry.get("cron")
+        token = None
+        if isinstance(cron_tool, CronTool):
+            token = cron_tool.set_cron_context(True)
+
+        try:
+            response = await agent_loop.process_message(
+                InboundMessage(
+                    channel=job.channel,
+                    chat_id=job.chat_id,
+                    sender_id="cron",
+                    text=job.prompt,
+                )
+            )
+            await _route_outbound_message(channels, response)
+        finally:
+            if isinstance(cron_tool, CronTool) and token is not None:
+                cron_tool.reset_cron_context(token)
+
+    if config.cron.enabled:
+        await cron_service.start(_execute_cron_job)
+        logger.info("Cron scheduler started")
+
     try:
         while True:
             msg = await bus.consume_inbound()
@@ -316,6 +385,7 @@ async def _run_gateway(config: Config) -> None:
     except asyncio.CancelledError:
         pass
     finally:
+        await cron_service.stop()
         for task in pending_tasks:
             task.cancel()
         if pending_tasks:
@@ -364,9 +434,108 @@ async def _handle_message(
             else:
                 response = await agent_loop.process_message(msg)
 
-        for ch in channels:
-            if ch.channel_name == response.channel:
-                await ch.send(response)
-                break
+        await _route_outbound_message(channels, response)
     except (RuntimeError, OSError, ValueError, TimeoutError) as e:
         logger.error(f"Error processing message: {e}")
+
+
+@cron_app.command("list")
+def cron_list() -> None:
+    """List persisted cron jobs."""
+    from sideclaw.cron import CronService
+
+    config = load_config(get_config_path())
+    service = CronService(_cron_store_path(config.workspace_path))
+    jobs = service.list_jobs()
+
+    if not jobs:
+        console.print("[dim]No cron jobs configured.[/dim]")
+        return
+
+    console.print("[bold]Cron Jobs[/bold]")
+    for job in jobs:
+        console.print(
+            " | ".join(
+                [
+                    job.job_id,
+                    job.name or "-",
+                    job.schedule,
+                    f"{job.channel}:{job.chat_id}",
+                    f"enabled={'yes' if job.enabled else 'no'}",
+                    f"next={_format_timestamp(service.next_run_at(job))}",
+                    f"last={_format_timestamp(job.last_run_at)}",
+                    f"error={job.last_error or '-'}",
+                ]
+            )
+        )
+
+
+@cron_app.command("add")
+def cron_add(
+    schedule: str = typer.Option(..., help="Cron expression, for example '0 9 * * *'"),
+    prompt: str = typer.Option(..., help="Prompt to send when the job fires"),
+    channel: str = typer.Option(..., help="Target channel name, for example 'telegram'"),
+    chat_id: str = typer.Option(..., help="Target chat ID for delivery"),
+    name: str | None = typer.Option(None, help="Optional human-readable job name"),
+) -> None:
+    """Add a persisted cron job."""
+    from sideclaw.cron import CronService
+
+    config = load_config(get_config_path())
+    service = CronService(_cron_store_path(config.workspace_path))
+
+    try:
+        job = service.add_job(
+            schedule=schedule,
+            prompt=prompt,
+            channel=channel,
+            chat_id=chat_id,
+            name=name,
+        )
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+    console.print(f"[green]Added cron job {job.job_id}[/green]")
+
+
+@cron_app.command("remove")
+def cron_remove(job_id: str) -> None:
+    """Remove a persisted cron job."""
+    from sideclaw.cron import CronService
+
+    config = load_config(get_config_path())
+    service = CronService(_cron_store_path(config.workspace_path))
+    if not service.remove_job(job_id):
+        console.print(f"[red]Cron job not found: {job_id}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Removed cron job {job_id}[/green]")
+
+
+@cron_app.command("enable")
+def cron_enable(job_id: str) -> None:
+    """Enable a persisted cron job."""
+    from sideclaw.cron import CronService
+
+    config = load_config(get_config_path())
+    service = CronService(_cron_store_path(config.workspace_path))
+    if not service.set_enabled(job_id, True):
+        console.print(f"[red]Cron job not found: {job_id}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Enabled cron job {job_id}[/green]")
+
+
+@cron_app.command("disable")
+def cron_disable(job_id: str) -> None:
+    """Disable a persisted cron job."""
+    from sideclaw.cron import CronService
+
+    config = load_config(get_config_path())
+    service = CronService(_cron_store_path(config.workspace_path))
+    if not service.set_enabled(job_id, False):
+        console.print(f"[red]Cron job not found: {job_id}[/red]")
+        raise typer.Exit(1)
+    console.print(f"[green]Disabled cron job {job_id}[/green]")
+
+
+app.add_typer(cron_app, name="cron")

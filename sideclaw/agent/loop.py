@@ -1,5 +1,6 @@
 """Core agent loop: receive message, call LLM, execute tools, respond."""
 from pathlib import Path
+from typing import TYPE_CHECKING
 from typing import Any
 
 import json_repair
@@ -32,6 +33,9 @@ from sideclaw.workspace.docs import WorkspaceDocs
 
 MAX_TOOL_ITERATIONS = 20
 
+if TYPE_CHECKING:
+    from sideclaw.cron.service import CronService
+
 
 class AgentLoop:
     """The core agent: processes messages through LLM + tool loop."""
@@ -44,6 +48,7 @@ class AgentLoop:
         provider: LLMProvider,
         session_manager: SessionManager,
         workspace: Path,
+        cron_service: "CronService | None" = None,
     ) -> None:
         self._config = config
         self._bus = bus
@@ -61,6 +66,7 @@ class AgentLoop:
         self._memory = MemoryStore(self._workspace)
         self._workspace_docs = WorkspaceDocs(self._workspace)
         self._registry = ToolRegistry()
+        self._cron_service = cron_service
 
     def _session_history_limit(self) -> int:
         """Return the configured session history limit for prompt construction."""
@@ -69,6 +75,7 @@ class AgentLoop:
     def register_default_tools(self) -> None:
         """Register the built-in tool set."""
         from sideclaw.tools.filesystem import EditFileTool, ListDirTool, ReadFileTool, WriteFileTool
+        from sideclaw.tools.cron import CronTool
         from sideclaw.tools.memory import (
             DocsGrepTool,
             MemorySearchTool,
@@ -94,6 +101,8 @@ class AgentLoop:
         self._registry.register(WorkspaceReadTool(self._workspace))
         self._registry.register(WorkspaceTreeTool(self._workspace))
         self._registry.register(MemoryWriteTool(self._workspace))
+        if self._cron_service is not None:
+            self._registry.register(CronTool(self._cron_service))
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the agent loop."""

@@ -52,6 +52,13 @@ class ToolsConfig(BaseModel):
     web_search_api_key: str | None = None
 
 
+class CronConfig(BaseModel):
+    """Background scheduler configuration."""
+
+    enabled: bool = True
+    poll_interval_seconds: int = Field(default=30, ge=1)
+
+
 class MemoryConfig(BaseModel):
     """Context and memory budgeting configuration."""
 
@@ -91,6 +98,7 @@ class Config(BaseModel):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
+    cron: CronConfig = Field(default_factory=CronConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
 

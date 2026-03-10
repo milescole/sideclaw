@@ -10,6 +10,7 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 - Build prompt context (identity + memory + history + runtime metadata)
 - Execute an LLM/tool loop until a final assistant response is produced
 - Persist conversation and memory state for continuity
+- Execute persisted cron jobs through the same agent and delivery pipeline
 
 ## 2. Core Components
 
@@ -24,6 +25,7 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
 | Channel adapters | `sideclaw/channels/*` | Platform-specific I/O (Telegram currently) |
+| Cron scheduler | `sideclaw/cron/service.py` | Persisted job storage, due-run computation, and background execution |
 
 ## 3. End-to-End Message Flow
 
@@ -100,6 +102,17 @@ Message payload sent to the provider:
 - `memory/MEMORY.md`: authoritative long-term summary
 - `memory/HISTORY.md`: append-only timestamped event log
 
+### Cron persistence
+
+- `cron/jobs.json`: persisted scheduled jobs
+- Each job stores:
+  - cron expression
+  - prompt payload
+  - target channel and chat id
+  - enabled flag
+  - created/updated timestamps
+  - last run time and last error
+
 ### Consolidation behavior
 
 When unconsolidated message count reaches `agent.memory_window` (default `50`):
@@ -130,6 +143,7 @@ Default tools registered by `AgentLoop.register_default_tools()`:
 - Execution: `exec`
 - Web: `web_search`, `web_fetch`
 - Memory: `save_memory`
+- Scheduling: `cron`
 
 ### Filesystem sandboxing
 
@@ -156,6 +170,9 @@ Schema root: `Config` in `sideclaw/config/schema.py`
 - `tools`
   - `exec_timeout` default: `60`
   - `web_search_api_key` optional
+- `cron`
+  - `enabled` default: `true`
+  - `poll_interval_seconds` default: `30`
 
 `onboard` CLI command supports merge-safe updates of existing config instead of destructive overwrite.
 
@@ -172,7 +189,17 @@ Telegram implementation (`sideclaw/channels/telegram.py`) provides:
 
 Gateway mode routes outbound responses by matching `response.channel` to `channel_name`.
 
-## 9. Provider Layer
+## 9. Cron Scheduling
+
+`CronService` persists jobs to `cron/jobs.json` and runs due jobs in the gateway process.
+
+- CLI commands manage jobs directly.
+- The `cron` tool lets the agent create jobs for the current chat.
+- Cron executions are fed back into `AgentLoop` as synthetic inbound messages with `sender_id="cron"`.
+- Outbound responses from scheduled jobs are routed through the same channel adapter used for live chat.
+- `CronTool` blocks nested scheduling during cron execution to avoid runaway self-scheduling loops.
+
+## 10. Provider Layer
 
 `OpenRouterProvider`:
 
@@ -182,14 +209,15 @@ Gateway mode routes outbound responses by matching `response.channel` to `channe
 - Converts LiteLLM tool call payloads into internal `ToolCallRequest`
 - Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
 
-## 10. Failure Handling and Operational Notes
+## 11. Failure Handling and Operational Notes
 
 - Tool failures are isolated and surfaced as tool result text, not process crashes.
 - LLM provider failures return an explicit error response.
 - Gateway processing wraps message handling and logs exceptions.
 - `exec` tool has timeout control but executes shell commands directly; treat as high-trust environment capability.
+- Cron execution failures are stored on the job record and retried on the next matching schedule.
 
-## 11. Testing Strategy
+## 12. Testing Strategy
 
 Test suite covers:
 
@@ -198,6 +226,7 @@ Test suite covers:
 - Channel logic (`tests/channels`)
 - CLI flows (`tests/cli`)
 - Config schema/loader (`tests/config`)
+- Cron scheduling and CLI management (`tests/cron`, cron cases in `tests/cli`)
 - Memory/session persistence (`tests/memory`, `tests/session`)
 - Provider parsing and error boundaries (`tests/providers`)
 - Tool behavior and edge cases (`tests/tools`)
@@ -209,7 +238,7 @@ Run all tests:
 uv run pytest
 ```
 
-## 12. Extensibility Guide
+## 13. Extensibility Guide
 
 ### Add a new tool
 
@@ -230,7 +259,7 @@ uv run pytest
 3. Instantiate in gateway startup path
 4. Add focused tests for filtering, lifecycle, and outbound behavior
 
-## 13. External Documentation
+## 14. External Documentation
 
 - Typer: https://typer.tiangolo.com/
 - Pydantic: https://docs.pydantic.dev/

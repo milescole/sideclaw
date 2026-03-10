@@ -80,6 +80,84 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
     assert merged.channels.telegram.allow_from == ["42"]
 
 
+def test_cron_add_list_and_remove_commands(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    workspace = tmp_path / "workspace"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(workspace)),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
+        add_result = runner.invoke(
+            app,
+            [
+                "cron",
+                "add",
+                "--schedule",
+                "0 9 * * *",
+                "--prompt",
+                "Morning summary",
+                "--channel",
+                "telegram",
+                "--chat-id",
+                "123",
+                "--name",
+                "daily-summary",
+            ],
+        )
+        assert add_result.exit_code == 0
+        assert "Added cron job" in add_result.output
+
+        list_result = runner.invoke(app, ["cron", "list"])
+        assert list_result.exit_code == 0
+        assert "daily-summary" in list_result.output
+        assert "0 9 * * *" in list_result.output
+
+        jobs_path = workspace / "cron" / "jobs.json"
+        assert jobs_path.exists()
+
+        from sideclaw.cron import CronService
+
+        job_id = CronService(jobs_path).list_jobs()[0].job_id
+        remove_result = runner.invoke(app, ["cron", "remove", job_id])
+        assert remove_result.exit_code == 0
+        assert "Removed cron job" in remove_result.output
+
+
+def test_cron_add_rejects_invalid_schedule(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
+        result = runner.invoke(
+            app,
+            [
+                "cron",
+                "add",
+                "--schedule",
+                "bad schedule",
+                "--prompt",
+                "Morning summary",
+                "--channel",
+                "telegram",
+                "--chat-id",
+                "123",
+            ],
+        )
+        assert result.exit_code == 1
+        assert "Invalid cron schedule" in result.output
+
+
 def test_reset_cli_session_clears_persisted_history(tmp_path: Path) -> None:
     session_dir = tmp_path / "sessions"
     manager = SessionManager(session_dir)

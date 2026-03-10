@@ -7,6 +7,7 @@ It provides:
 - A core agent loop with tool calling
 - CLI and Telegram channel entry points
 - Session persistence and long-term memory
+- Persisted cron scheduling for recurring chat tasks
 - Config-driven provider/channel/tool setup
 
 ## Why SideClaw
@@ -51,6 +52,7 @@ sideclaw/
     memory/        # long-term memory store
     providers/     # LLM abstraction + OpenRouter implementation
     session/       # JSONL-backed session persistence
+    cron/          # persisted scheduler service
     tools/         # tool base class + built-in tools
     templates/     # bootstrap identity/soul prompt files
   tests/           # unit + integration tests
@@ -105,6 +107,33 @@ uv run sideclaw gateway
 
 The gateway runs continuously, receives inbound channel messages, and routes outbound responses through the matching channel adapter.
 
+Scheduled jobs are executed by the same gateway process, so recurring Telegram delivery works while
+`sideclaw gateway` is running.
+
+Example:
+
+```text
+Send me a new meal plan every Friday night at 9pm.
+```
+
+The agent can map that to a cron job for the current chat.
+
+You can also manage jobs explicitly:
+
+```bash
+uv run sideclaw cron add \
+  --schedule "0 21 * * 5" \
+  --prompt "Send me a new meal plan" \
+  --channel telegram \
+  --chat-id 123456789 \
+  --name "weekly meal plan"
+
+uv run sideclaw cron list
+uv run sideclaw cron disable <job-id>
+uv run sideclaw cron enable <job-id>
+uv run sideclaw cron remove <job-id>
+```
+
 ## Configuration
 
 Default config path:
@@ -119,6 +148,7 @@ Core configuration sections:
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
 - `tools`: `exec_enabled`, shell timeout, and web search API key
+- `cron`: scheduler enable flag and polling interval
 
 Workspace defaults to:
 
@@ -143,6 +173,7 @@ Onboarding creates:
 - `web_search`: Brave Search API integration
 - `web_fetch`: fetch raw URL text
 - `save_memory`: update long-term memory store
+- `cron`: add/list/remove/enable/disable recurring jobs for the current chat
 
 When enabled, `exec` runs inside the configured workspace, strips secret-like environment
 variables, blocks obviously dangerous command patterns, and requires explicit CLI approval for
