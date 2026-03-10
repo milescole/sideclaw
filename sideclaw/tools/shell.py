@@ -77,6 +77,8 @@ _ALWAYS_APPROVAL_PATTERNS: tuple[tuple[re.Pattern[str], str, str], ...] = tuple(
     )
 )
 _SHELL_OPERATORS = {"&&", "||", ";", "|", ">", ">>", "<", "2>", "2>>", "1>", "1>>", "&>"}
+
+
 class ExecTool(Tool):
     """Execute shell commands within the workspace."""
 

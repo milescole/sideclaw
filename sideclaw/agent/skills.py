@@ -20,7 +20,9 @@ class SkillsLoader:
         skills_by_name: dict[str, dict[str, str]] = {}
 
         for skill_file, source in self._iter_skill_files():
-            frontmatter, _body = self._parse_frontmatter(skill_file.read_text(encoding="utf-8").strip())
+            frontmatter, _body = self._parse_frontmatter(
+                skill_file.read_text(encoding="utf-8").strip()
+            )
             name = str(frontmatter.get("name") or skill_file.parent.name)
             description = str(frontmatter.get("summary") or frontmatter.get("description") or name)
             path = self._relative_display_path(skill_file, source)
@@ -50,9 +52,7 @@ class SkillsLoader:
             "<available_skills>",
         ]
         for skill in skills:
-            lines.append(
-                f'- {skill["name"]}: {skill["description"]} ({skill["path"]})'
-            )
+            lines.append(f"- {skill['name']}: {skill['description']} ({skill['path']})")
         lines.append("</available_skills>")
         return "\n".join(lines)
 
@@ -210,9 +210,7 @@ class SkillsLoader:
     @staticmethod
     def _extract_terms(text: str) -> set[str]:
         return {
-            term
-            for term in re.findall(r"[a-z0-9][a-z0-9_-]{1,}", text.lower())
-            if len(term) >= 3
+            term for term in re.findall(r"[a-z0-9][a-z0-9_-]{1,}", text.lower()) if len(term) >= 3
         }
 
     @staticmethod

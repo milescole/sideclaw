@@ -58,9 +58,7 @@ def redact(text: str) -> str:
 
     text = _AUTH_HEADER_RE.sub(lambda m: m.group(1) + _mask(m.group(2)), text)
 
-    text = _TELEGRAM_RE.sub(lambda m: f"{m.group(1) or ''}{m.group(2)}:***", text)
-
-    return text
+    return _TELEGRAM_RE.sub(lambda m: f"{m.group(1) or ''}{m.group(2)}:***", text)
 
 
 def _redact_record(record: dict) -> bool:

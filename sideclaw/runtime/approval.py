@@ -118,10 +118,7 @@ def approve_pending(session: object, scope: ApprovalScope | None) -> ApprovalDec
             message=f"Error: {request.description} not approved ({request.subject})",
         )
 
-    if (
-        scope == ApprovalScope.session
-        and request.requirement != ApprovalRequirement.always
-    ):
+    if scope == ApprovalScope.session and request.requirement != ApprovalRequirement.always:
         session.approved_approval_keys.add(request.approval_key)
 
     return ApprovalDecision(

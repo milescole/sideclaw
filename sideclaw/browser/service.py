@@ -1,6 +1,6 @@
 """Playwright-backed browser automation service."""
 
-# ruff: noqa: BLE001, C901, FBT001, FBT003, PIE810, PLR0911, PLR0912, PLR0913, PLW0108, PLW0603, PTH110, S110, S603, SIM112, TRY300
+# ruff: noqa: BLE001, PIE810, PLR0911, PLW0108, PTH110, S110, S603, SIM112, TRY300
 
 from __future__ import annotations
 

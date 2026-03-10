@@ -91,10 +91,7 @@ def build_default_tool_registry(
     if config.tools.exec_enabled:
         registry.register(ExecTool(workspace=workspace, timeout=config.tools.exec_timeout))
 
-    if (
-        config.tools.web_search_provider is not None
-        and config.tools.web_search_api_key is not None
-    ):
+    if config.tools.web_search_provider is not None and config.tools.web_search_api_key is not None:
         registry.register(
             WebSearchTool(
                 provider=config.tools.web_search_provider,

@@ -76,7 +76,7 @@ class WorkspaceDocs:
     def __init__(self, workspace: Path) -> None:
         self._workspace = workspace.resolve()
 
-    def grep(  # noqa: PLR0913
+    def grep(
         self,
         *,
         query: str,
@@ -218,7 +218,7 @@ class WorkspaceDocs:
         ranked.sort(key=lambda hit: (-hit.score, hit.relative_path, hit.line_number))
         return ranked[:max_hits]
 
-    def write(  # noqa: PLR0913
+    def write(
         self,
         *,
         target: str,

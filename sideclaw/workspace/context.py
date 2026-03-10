@@ -63,6 +63,8 @@ _REQUIRED_FILES = (
     "docs/environment.md",
     "docs/memory/long-term.md",
 )
+
+
 class WorkspaceFormatError(RuntimeError):
     """Raised when a workspace does not match the canonical markdown layout."""
 
@@ -97,7 +99,7 @@ class WorkspaceContextBundle:
 class WorkspaceContextManager:
     """Load and route canonical workspace markdown files."""
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         workspace: Path,
         *,
@@ -114,7 +116,7 @@ class WorkspaceContextManager:
         self._always_include = always_include
         self._enable_injection_scan = enable_injection_scan
 
-    def build_bundle(  # noqa: C901
+    def build_bundle(
         self,
         *,
         current_message: str = "",
@@ -133,7 +135,9 @@ class WorkspaceContextManager:
         baseline_paths = list(self._always_include)
         if bootstrap_mode:
             baseline_paths.append("BOOTSTRAP.md")
-        routed_paths, routing_warnings = self._rank_routed_paths(current_message, history or [], seen)
+        routed_paths, routing_warnings = self._rank_routed_paths(
+            current_message, history or [], seen
+        )
         warnings.extend(routing_warnings)
         for relative_path in [*baseline_paths, *routed_paths]:
             if relative_path in seen:
@@ -304,9 +308,7 @@ class WorkspaceContextManager:
     @staticmethod
     def _extract_terms(text: str) -> set[str]:
         return {
-            term
-            for term in re.findall(r"[a-z0-9][a-z0-9_-]{1,}", text.lower())
-            if len(term) >= 3
+            term for term in re.findall(r"[a-z0-9][a-z0-9_-]{1,}", text.lower()) if len(term) >= 3
         }
 
     @staticmethod

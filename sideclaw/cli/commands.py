@@ -127,10 +127,14 @@ def onboard() -> None:
             if config.tools.web_search_provider is not None
             else WebSearchProvider.brave.value
         )
-        provider_raw = typer.prompt(
-            "Web search provider",
-            default=provider_default,
-        ).strip().lower()
+        provider_raw = (
+            typer.prompt(
+                "Web search provider",
+                default=provider_default,
+            )
+            .strip()
+            .lower()
+        )
         existing_search_key = config.tools.web_search_api_key or ""
         search_key_prompt = (
             "Web search API key (leave blank to keep existing)"
@@ -144,8 +148,7 @@ def onboard() -> None:
             config.tools.web_search_api_key = search_key
         else:
             console.print(
-                "[yellow]Web search not configured; leaving web_search "
-                "disabled.[/yellow]"
+                "[yellow]Web search not configured; leaving web_search disabled.[/yellow]"
             )
             config.tools.web_search_provider = None
             config.tools.web_search_api_key = None
@@ -177,18 +180,19 @@ def onboard() -> None:
                 ).strip()
                 or existing_fal_model
             )
-            config.tools.fal_model = normalize_fal_model_id(
-                selected_fal_model
-            )
+            config.tools.fal_model = normalize_fal_model_id(selected_fal_model)
             config.tools.fal_enable_upscaling = typer.confirm(
                 "Enable automatic fal.ai upscaling?",
                 default=config.tools.fal_enable_upscaling,
             )
             if config.tools.fal_enable_upscaling:
-                config.tools.fal_upscaler_model = typer.prompt(
-                    "fal.ai upscaler model",
-                    default=config.tools.fal_upscaler_model,
-                ).strip() or config.tools.fal_upscaler_model
+                config.tools.fal_upscaler_model = (
+                    typer.prompt(
+                        "fal.ai upscaler model",
+                        default=config.tools.fal_upscaler_model,
+                    ).strip()
+                    or config.tools.fal_upscaler_model
+                )
         else:
             console.print(
                 "[yellow]Image generation not configured; leaving "
@@ -289,8 +293,7 @@ def status() -> None:
     )
     if config.tools.web_search_provider and config.tools.web_search_api_key:
         console.print(
-            "Web search: [green]configured[/green] "
-            f"({config.tools.web_search_provider.value})"
+            f"Web search: [green]configured[/green] ({config.tools.web_search_provider.value})"
         )
     else:
         console.print("Web search: [dim]not configured[/dim]")
@@ -313,10 +316,7 @@ def status() -> None:
         if config.tools.tts.enabled
         else "[dim]disabled[/dim]"
     )
-    console.print(
-        "Text-to-speech: "
-        f"{tts_status}"
-    )
+    console.print(f"Text-to-speech: {tts_status}")
 
     if config.providers.openrouter:
         key = config.providers.openrouter.api_key

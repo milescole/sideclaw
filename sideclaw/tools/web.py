@@ -98,7 +98,7 @@ def _html_to_markdown(raw_html: str) -> str:
     )
     text = re.sub(
         r"<h([1-6])[^>]*>([\s\S]*?)</h\1>",
-        lambda match: f'\n{"#" * int(match[1])} {_strip_tags(match[2])}\n',
+        lambda match: f"\n{'#' * int(match[1])} {_strip_tags(match[2])}\n",
         text,
         flags=re.IGNORECASE,
     )
@@ -123,8 +123,10 @@ def _extract_html_content(document_html: str, *, extract_mode: str) -> tuple[str
     try:
         from readability import Document  # type: ignore[import-not-found]
     except ImportError:
-        content = _html_to_markdown(document_html) if extract_mode == "markdown" else _normalize(
-            _strip_tags(document_html)
+        content = (
+            _html_to_markdown(document_html)
+            if extract_mode == "markdown"
+            else _normalize(_strip_tags(document_html))
         )
         return content, "fallback"
 
@@ -205,15 +207,11 @@ class WebSearchTool(Tool):
             error = "Error: 'query' must not be empty"
         elif len(query) > 2000:
             error = "Error: 'query' exceeds maximum length of 2000 characters"
-        elif (
-            filters["country"] is not None
-            and not _is_valid_country_code(str(filters["country"]))
-        ):
+        elif filters["country"] is not None and not _is_valid_country_code(str(filters["country"])):
             country = str(filters["country"])
             error = f"Error: Invalid 'country': expected 2-letter code like 'US', got '{country}'"
-        elif (
-            filters["search_lang"] is not None
-            and not _is_valid_lang_code(str(filters["search_lang"]))
+        elif filters["search_lang"] is not None and not _is_valid_lang_code(
+            str(filters["search_lang"])
         ):
             search_lang = str(filters["search_lang"])
             error = (
@@ -223,9 +221,8 @@ class WebSearchTool(Tool):
         elif filters["ui_lang"] is not None and not _is_valid_ui_lang(str(filters["ui_lang"])):
             ui_lang = str(filters["ui_lang"])
             error = f"Error: Invalid 'ui_lang': expected format like 'en-US', got '{ui_lang}'"
-        elif (
-            filters["freshness"] is not None
-            and not _is_valid_freshness(str(filters["freshness"]))
+        elif filters["freshness"] is not None and not _is_valid_freshness(
+            str(filters["freshness"])
         ):
             freshness = str(filters["freshness"])
             error = (

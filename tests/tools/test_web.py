@@ -60,23 +60,23 @@ class _FakeAsyncClient:
 async def test_web_search_formats_brave_results(monkeypatch) -> None:
     _FakeAsyncClient.responses = [
         _FakeResponse(
-        json_data={
-            "web": {
-                "results": [
-                    {
-                        "title": "Result One",
-                        "url": "https://example.com/1",
-                        "description": "First description",
-                        "age": "2 days ago",
-                    },
-                    {
-                        "title": "Result Two",
-                        "url": "https://example.com/2",
-                        "description": "Second description",
-                    },
-                ]
+            json_data={
+                "web": {
+                    "results": [
+                        {
+                            "title": "Result One",
+                            "url": "https://example.com/1",
+                            "description": "First description",
+                            "age": "2 days ago",
+                        },
+                        {
+                            "title": "Result Two",
+                            "url": "https://example.com/2",
+                            "description": "Second description",
+                        },
+                    ]
+                }
             }
-        }
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)
@@ -152,11 +152,11 @@ async def test_web_fetch_rejects_invalid_scheme() -> None:
 async def test_web_fetch_extracts_html_with_fallback_markdown(monkeypatch) -> None:
     _FakeAsyncClient.responses = [
         _FakeResponse(
-        text=(
-            "<html><body><article><h1>Hello</h1><p>Paragraph</p>"
-            '<a href="https://example.com/docs">Docs</a></article></body></html>'
-        ),
-        headers={"content-type": "text/html; charset=utf-8"},
+            text=(
+                "<html><body><article><h1>Hello</h1><p>Paragraph</p>"
+                '<a href="https://example.com/docs">Docs</a></article></body></html>'
+            ),
+            headers={"content-type": "text/html; charset=utf-8"},
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)
@@ -175,8 +175,8 @@ async def test_web_fetch_extracts_html_with_fallback_markdown(monkeypatch) -> No
 async def test_web_fetch_formats_json_payload(monkeypatch) -> None:
     _FakeAsyncClient.responses = [
         _FakeResponse(
-        json_data={"ok": True, "name": "sideclaw"},
-        headers={"content-type": "application/json"},
+            json_data={"ok": True, "name": "sideclaw"},
+            headers={"content-type": "application/json"},
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)
@@ -203,8 +203,8 @@ async def test_web_fetch_uses_readability_when_available(monkeypatch) -> None:
 
     _FakeAsyncClient.responses = [
         _FakeResponse(
-        text="<html><body><article>ignored</article></body></html>",
-        headers={"content-type": "text/html"},
+            text="<html><body><article>ignored</article></body></html>",
+            headers={"content-type": "text/html"},
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)

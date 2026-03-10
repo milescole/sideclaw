@@ -1,7 +1,6 @@
 """Tool for scheduling recurring agent tasks."""
 
 from contextvars import ContextVar, Token
-from datetime import datetime
 from typing import Any
 
 from sideclaw.cron import CronService

@@ -7,11 +7,7 @@ def test_skills_loader_lists_skill(tmp_path) -> None:
     skill = tmp_path / "skills" / "cron" / "SKILL.md"
     skill.parent.mkdir(parents=True, exist_ok=True)
     skill.write_text(
-        "---\n"
-        "summary: Weekly scheduling guidance\n"
-        "---\n\n"
-        "# Cron Skill\n\n"
-        "Use the cron tool.\n"
+        "---\nsummary: Weekly scheduling guidance\n---\n\n# Cron Skill\n\nUse the cron tool.\n"
     )
 
     skills = SkillsLoader(tmp_path).list_skills()
@@ -22,10 +18,7 @@ def test_skills_loader_lists_skill(tmp_path) -> None:
         "description": "Weekly scheduling guidance",
         "source": "workspace",
     }
-    assert {
-        skill["name"]: skill["path"]
-        for skill in skills
-    } == {
+    assert {skill["name"]: skill["path"] for skill in skills} == {
         "cron": "skills/cron/SKILL.md",
         "find-skills": "skills/find-skills/SKILL.md",
         "skill-creator": "skills/skill-creator/SKILL.md",
@@ -75,7 +68,8 @@ def test_skills_loader_ranks_description_only_skill(tmp_path) -> None:
     skill.write_text(
         "---\n"
         "name: skill-creator\n"
-        "description: Create or update AgentSkills. Use when designing, structuring, or packaging skills with scripts, references, and assets.\n"
+        "description: Create or update AgentSkills. Use when designing, structuring, "
+        "or packaging skills with scripts, references, and assets.\n"
         "---\n\n"
         "# Skill Creator\n\n"
         "Follow the skill creation workflow.\n"

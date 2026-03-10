@@ -61,12 +61,21 @@ ignore = [
     "RSE102", # unnecessary-paren-on-raise-exception style-level
     "EM102", # f-string-in-exception style-level
     "TRY003", # raise-vanilla-args style-level
+    "C901", # complexity thresholds are too aggressive for current command/runtime surfaces
+    "FBT001", # boolean positional parameters are accepted in the current API shape
+    "FBT003", # boolean positional arguments are accepted in the current API shape
+    "PLR0912", # branch count thresholds are too aggressive for current CLI flows
+    "PLR0913", # argument count thresholds are too aggressive for current runtime interfaces
+    "PLR0915", # statement count thresholds are too aggressive for current command/runtime surfaces
+    "PLW0603", # module-level approval config intentionally uses global state
+    "SLF001", # selected internal access is intentional at integration boundaries
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = [
     "S105", # hardcoded-password-string test fixtures use fake secrets
     "S106", # hardcoded-password-func-arg test fixtures use fake secrets
+    "ASYNC240", # tests may use pathlib helpers for fixture assertions
     "SLF001", # private-member-access tests may inspect internals
 ]
 

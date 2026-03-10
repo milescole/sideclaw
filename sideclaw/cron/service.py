@@ -141,7 +141,9 @@ class CronService:
             as_of = as_of.replace(tzinfo=UTC)
 
         due_jobs = [
-            job for job in self.list_jobs() if (next_run := self.next_run_at(job)) and next_run <= as_of
+            job
+            for job in self.list_jobs()
+            if (next_run := self.next_run_at(job)) and next_run <= as_of
         ]
         completed: list[CronJob] = []
 

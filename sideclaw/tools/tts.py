@@ -112,9 +112,7 @@ class TextToSpeechTool(Tool):
             return Path(raw_path).expanduser()
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         extension = (
-            ".ogg"
-            if channel == "telegram" and provider in {"openai", "elevenlabs"}
-            else ".mp3"
+            ".ogg" if channel == "telegram" and provider in {"openai", "elevenlabs"} else ".mp3"
         )
         return self._workspace / "artifacts" / "media" / f"tts_{timestamp}{extension}"
 

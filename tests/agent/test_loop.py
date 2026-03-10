@@ -16,8 +16,8 @@ from sideclaw.config.schema import (
     OpenRouterConfig,
     ProvidersConfig,
     TelegramConfig,
-    TTSConfig,
     ToolsConfig,
+    TTSConfig,
     WebSearchProvider,
 )
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
@@ -144,7 +144,9 @@ async def test_process_message_respects_keep_recent_messages(config, bus, worksp
     assert "recent answer" in rendered
 
 
-def test_build_messages_from_session_respects_keep_recent_messages(config, bus, mock_provider, workspace):
+def test_build_messages_from_session_respects_keep_recent_messages(
+    config, bus, mock_provider, workspace
+):
     config.memory = MemoryConfig(keep_recent_messages=2)
     agent = AgentLoop(
         config=config,
@@ -225,6 +227,7 @@ def test_register_default_tools_includes_exec_when_enabled(config, bus, mock_pro
     agent.register_default_tools()
 
     assert agent._registry.has("exec") is True
+
 
 def test_register_default_tools_includes_web_search_when_configured(
     config,

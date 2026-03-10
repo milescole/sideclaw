@@ -114,18 +114,25 @@ def test_write_file_declares_session_approval_requirement(workspace):
     )
     assert tool.approval_key(path="blocked.txt", content="test") == "fs:write_file"
 
+
 def test_edit_file_declares_session_approval_requirement(workspace):
     tool = EditFileTool(workspace)
-    assert tool.approval_requirement(
-        path="edit.txt",
-        old_text="original",
-        new_text="changed",
-    ) == ApprovalRequirement.unless_session_approved
-    assert tool.approval_key(
-        path="edit.txt",
-        old_text="original",
-        new_text="changed",
-    ) == "fs:edit_file"
+    assert (
+        tool.approval_requirement(
+            path="edit.txt",
+            old_text="original",
+            new_text="changed",
+        )
+        == ApprovalRequirement.unless_session_approved
+    )
+    assert (
+        tool.approval_key(
+            path="edit.txt",
+            old_text="original",
+            new_text="changed",
+        )
+        == "fs:edit_file"
+    )
 
 
 async def test_read_file_does_not_require_approval(workspace):

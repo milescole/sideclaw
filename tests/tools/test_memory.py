@@ -124,7 +124,9 @@ async def test_memory_write_rejects_unsafe_content(memory_write_tool):
 
 
 async def test_memory_write_approval_key_is_scoped_by_target(memory_write_tool):
-    assert memory_write_tool.approval_key(target="user", content="x") == "workspace:memory_write:user"
+    assert (
+        memory_write_tool.approval_key(target="user", content="x") == "workspace:memory_write:user"
+    )
     assert (
         memory_write_tool.approval_key(target="long_term", content="x")
         == "workspace:memory_write:long_term"

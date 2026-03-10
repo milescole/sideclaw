@@ -20,7 +20,7 @@ class BaseChannel(ABC):
         if not self._allow_from:
             logger.warning(
                 f"Channel '{channel_name}' has empty allow_from — all access denied. "
-                "Set allow_from to a list of sender IDs, or [\"*\"] to allow everyone."
+                'Set allow_from to a list of sender IDs, or ["*"] to allow everyone.'
             )
 
     @abstractmethod

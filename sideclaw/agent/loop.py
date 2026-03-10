@@ -1,7 +1,7 @@
 """Core agent loop: receive message, call LLM, execute tools, respond."""
+
 from pathlib import Path
-from typing import TYPE_CHECKING
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import json_repair
 from loguru import logger

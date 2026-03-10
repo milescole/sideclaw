@@ -98,7 +98,6 @@ def test_config_has_approval_section():
     assert cfg.memory.max_context_chars == 14_000
 
 
-
 def test_approval_mode_auto_deny():
     cfg = ApprovalConfig(mode=ApprovalMode.auto_deny)
     assert cfg.mode == ApprovalMode.auto_deny

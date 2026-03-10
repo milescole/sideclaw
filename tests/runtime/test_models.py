@@ -1,7 +1,7 @@
 from sideclaw.runtime.models import (
     ApprovalDecision,
-    ApprovalRequirement,
     ApprovalRequest,
+    ApprovalRequirement,
     ApprovalScope,
     ApprovalStatus,
     ToolExecutionOutcome,

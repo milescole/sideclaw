@@ -23,7 +23,8 @@ class ClarifyTool(Tool):
     @property
     def description(self) -> str:
         return (
-            "Ask the user a clarifying question. Supports either open-ended input or up to four choices."
+            "Ask the user a clarifying question. Supports either open-ended input "
+            "or up to four choices."
         )
 
     @property

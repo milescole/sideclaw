@@ -1,6 +1,6 @@
 """Build role snapshots and refs from Playwright ARIA snapshots."""
 
-# ruff: noqa: C901, PLR0911
+# ruff: noqa: PLR0911
 
 import re
 from typing import Any
