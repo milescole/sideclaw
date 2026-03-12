@@ -1,0 +1,185 @@
+# SideClaw Development Guide
+
+**SideClaw** is a lightweight, message-driven AI assistant framework. The core loop builds prompt context from workspace docs, calls an LLM provider, executes a config-driven tool registry, and persists session and memory state for continuity across CLI, gateway, and scheduled runs.
+
+## Build, Test, and Run
+
+```bash
+uv sync --dev                 # install runtime + dev dependencies
+uv run ruff format .          # format
+uv run ruff check .           # lint
+uv run pytest                 # full test suite
+uv run sideclaw onboard       # interactive setup
+uv run sideclaw status        # inspect current config/workspace state
+uv run sideclaw agent         # local interactive agent
+uv run sideclaw gateway       # long-running channel + cron runtime
+```
+
+Use targeted tests while iterating, for example `uv run pytest tests/tools/test_shell.py` or
+`uv run pytest tests/agent/test_prompt_builder.py`.
+
+## Contributor Rules
+
+- Prefer small, local changes that follow the current module boundaries over introducing new abstractions early.
+- Run `uv run ruff check .` and the most relevant `uv run pytest ...` coverage after behavior changes. Run the full suite before wrapping substantial work.
+- Treat prompt construction, workspace-doc routing, approval flows, and tool safety checks as core behavior. Regressions there change the whole system.
+- Keep the hot-path prompt files concise. `AGENTS.md`, `SOUL.md`, and `docs/core-beliefs.md` are injected by default.
+- Preserve the split between transient session history and durable workspace memory. Do not collapse them into one store.
+- Keep channel-specific behavior out of the core agent loop when an adapter or runtime boundary already exists.
+- Gate risky or mutating execution through the approval/runtime model instead of adding one-off prompts or bypasses.
+- Prefer `pathlib.Path`, typed Pydantic models, and existing helper utilities over ad hoc string/path handling.
+- Comments should explain non-obvious intent, not restate the code.
+
+## Code Style
+
+- Python version is `>=3.13`; follow the existing async-first style and current project patterns.
+- Ruff enforces formatting and linting. Line length is `100`.
+- Use `str | None`, `list[str]`, and other modern built-in type syntax already used in the repo.
+- Keep public surfaces explicit and small. Most modules expose a few clear entry points rather than deep inheritance trees.
+- Prefer constructor injection for runtime dependencies like `Config`, `SessionManager`, `MessageBus`, provider implementations, and workspace paths.
+- Use dataclasses or Pydantic models where the codebase already uses them for structured runtime state.
+- Avoid hidden global behavior except where the project already centralizes process-wide policy, such as `sideclaw/runtime/approval.py`.
+
+## Architecture Principles
+
+- SideClaw is message-driven. Inbound channel messages become `InboundMessage` objects, flow through the agent loop, and produce `OutboundMessage` responses.
+- Prompt assembly is a first-class subsystem, not a string concatenation detail. `sideclaw/agent/prompt_builder.py` and `sideclaw/workspace/context.py` decide what context enters the model.
+- Workspace docs are part of runtime behavior. Canonical files and routed docs influence model behavior, memory, and safety.
+- Tool registration is config-driven. Core tools are always present; browser, image, messaging, TTS, shell, web search, and cron are conditional.
+- Session storage and long-term memory serve different purposes:
+  - sessions preserve turn-by-turn transcripts per `channel:chat_id`
+  - memory/workspace docs preserve curated durable context
+- Approval is a runtime policy surface, not just UI. CLI and channel approval modes must remain behaviorally consistent.
+- Skills are prompt extensions selected by frontmatter and request matching. Changes to loading or ranking affect agent behavior broadly.
+
+## Runtime Flow
+
+```text
+channel/CLI input
+  -> message bus
+  -> agent loop
+  -> prompt builder + workspace context + skill loading
+  -> provider chat call
+  -> optional tool execution loop
+  -> session save + optional memory consolidation
+  -> outbound bus
+  -> channel adapter
+```
+
+The main orchestration lives in `sideclaw/agent/loop.py`. If a change affects multiple steps in this flow, verify the full interaction, not just the local function.
+
+## Project Structure
+
+```text
+sideclaw/
+├── agent/         # core orchestration, prompt building, skill loading, tool registry wiring
+├── browser/       # Playwright-backed browser session management and snapshots
+├── bus/           # async inbound/outbound queue abstractions
+├── channels/      # channel adapters; Telegram is the current external gateway
+├── cli/           # Typer entry points for onboard, agent, gateway, cron, status
+├── config/        # Pydantic config schema plus load/save helpers
+├── cron/          # persisted scheduler service and due-job execution
+├── memory/        # long-term memory store built on workspace markdown files
+├── providers/     # LLM abstraction and OpenRouter implementation via LiteLLM
+├── runtime/       # approval state, runtime context, clarify/approval models
+├── session/       # JSONL-backed per-chat session persistence and locking
+├── skills/        # built-in skill prompts copied into workspaces and loaded by relevance
+├── tools/         # tool interfaces and built-in tools
+├── utils/         # shared file and redaction helpers
+└── workspace/     # scaffold, canonical doc helpers, prompt-context routing
+
+tests/
+├── agent/         # loop and prompt-builder behavior
+├── bus/           # queue semantics
+├── channels/      # Telegram adapter behavior
+├── cli/           # CLI flows and onboarding/status behavior
+├── config/        # schema and loader coverage
+├── cron/          # scheduler persistence and due-run logic
+├── memory/        # durable memory behavior
+├── providers/     # provider parsing and error handling
+├── runtime/       # approval and runtime models
+├── session/       # JSONL persistence and locking
+├── skills/        # skill loading/ranking
+├── tools/         # built-in tool coverage
+└── test_integration.py  # end-to-end message flow coverage
+```
+
+## Key Modules
+
+- `sideclaw/cli/commands.py`: process entry point and runtime assembly. It wires config, provider, workspace scaffold, channel startup, and gateway execution.
+- `sideclaw/agent/loop.py`: the core LLM/tool loop, session locking, pending approval resume path, and memory consolidation trigger.
+- `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
+- `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.
+- `sideclaw/agent/prompt_builder.py`: system prompt assembly, runtime metadata injection, and context-budget trimming.
+- `sideclaw/workspace/context.py` and `sideclaw/workspace/docs.py`: canonical workspace document routing, reading, search, and controlled writes.
+- `sideclaw/session/manager.py`: per-session persistence and lock ownership. Concurrency changes should be reviewed carefully.
+- `sideclaw/memory/store.py`: long-term summary and history handling.
+- `sideclaw/runtime/approval.py`: centralized approval policy, pending approvals, CLI prompts, and session-scope approvals.
+- `sideclaw/tools/base.py` and `sideclaw/tools/registry.py`: tool contract and execution boundary.
+
+## Prompt and Workspace Model
+
+This repo treats workspace documents as part of the runtime, not just user content.
+
+- Default hot-path includes are configured in `sideclaw/config/schema.py` and used by `PromptBuilder`.
+- The scaffolded workspace layout in `sideclaw/templates/workspace/` is the contract for canonical docs.
+- `AGENTS.md` is for operating rules, not persona.
+- `SOUL.md` is for persona and stable behavioral voice.
+- `docs/core-beliefs.md` is part of the default prompt hot path.
+- Routed docs under `docs/runbooks/`, `docs/decisions/`, `docs/exec-plans/active/`, and memory paths are pulled in based on relevance.
+- Prompt budget matters. Large or noisy docs can crowd out useful context and change model behavior.
+
+If you change canonical doc names, routing rules, or scaffold behavior, update tests in `tests/agent/`, `tests/skills/`, `tests/config/`, and `tests/test_integration.py`.
+
+## Tools and Extension Points
+
+### Adding a tool
+
+1. Implement the tool in `sideclaw/tools/`.
+2. Register it in `sideclaw/agent/tools.py` in the right conditional bucket.
+3. Add or extend tests in `tests/tools/` and any agent-loop coverage needed for end-to-end behavior.
+
+### Adding a channel
+
+1. Implement the adapter in `sideclaw/channels/`.
+2. Extend config models in `sideclaw/config/schema.py`.
+3. Wire startup and outbound routing in `sideclaw/cli/commands.py`.
+4. Add focused adapter tests plus at least one integration-path test if message flow changes.
+
+### Adding a provider
+
+1. Implement the `LLMProvider` contract in `sideclaw/providers/`.
+2. Extend config loading/schema.
+3. Wire provider selection in CLI boot paths.
+4. Verify tool-call parsing and error-path behavior in tests.
+
+### Adding or changing workspace skills
+
+1. Update `sideclaw/skills/**/SKILL.md`.
+2. Keep frontmatter accurate: `name`, `summary` or `description`, plus `read_when` and `tags` when relevance matters.
+3. Verify ranking/selection behavior in `tests/skills/test_loader.py` and prompt inclusion behavior in `tests/agent/test_prompt_builder.py`.
+
+## Testing Expectations
+
+- For prompt-context changes, run:
+  - `uv run pytest tests/agent/test_prompt_builder.py tests/skills/test_loader.py tests/test_integration.py`
+- For tool changes, run the affected `tests/tools/test_*.py` modules and at least one agent-loop path if registration or approval behavior changed.
+- For CLI/config changes, run:
+  - `uv run pytest tests/cli/test_commands.py tests/config/test_loader.py tests/config/test_schema.py`
+- For session, memory, or cron changes, run the corresponding focused tests and then the full suite if the change crosses subsystem boundaries.
+
+Do not claim a behavior change is safe without running the tests that exercise that subsystem.
+
+## Sharp Edges
+
+- `exec` is intentionally high-trust and approval-gated. Keep safety checks and environment redaction intact.
+- Browser tooling is optional and should fail closed when Playwright or runtime requirements are unavailable.
+- Cron jobs execute through the same agent/runtime path as live messages. Avoid changes that create self-scheduling or duplicate-delivery loops.
+- Skill selection is heuristic. Small frontmatter or matching changes can have broad prompt effects.
+- Workspace document writes are bounded and target-aware; avoid bypassing `WorkspaceDocs` when editing canonical memory docs in runtime code.
+
+## Related Docs
+
+- `README.md`: user-facing setup and usage
+- `TECHNICAL.md`: broader internal architecture and runtime behavior
+- `sideclaw/templates/workspace/AGENTS.md`: scaffolded downstream workspace guide, not this repo's contributor guide
