@@ -106,7 +106,8 @@ tests/
 
 ## Key Modules
 
-- `sideclaw/cli/commands.py`: process entry point and runtime assembly. It wires config, provider, workspace scaffold, channel startup, and gateway execution.
+- `sideclaw/cli/main.py`: process entry point and Typer wiring for the CLI.
+- `sideclaw/cli/commands/`: command implementation modules for onboarding, status, agent, cron, and gateway behavior.
 - `sideclaw/agent/loop.py`: the core LLM/tool loop, session locking, pending approval resume path, and memory consolidation trigger.
 - `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.
@@ -143,7 +144,7 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
 
 1. Implement the adapter in `sideclaw/channels/`.
 2. Extend config models in `sideclaw/config/schema.py`.
-3. Wire startup and outbound routing in `sideclaw/cli/commands.py`.
+3. Wire startup and outbound routing in `sideclaw/cli/main.py` and the relevant `sideclaw/cli/commands/` module.
 4. Add focused adapter tests plus at least one integration-path test if message flow changes.
 
 ### Adding a provider

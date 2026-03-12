@@ -28,7 +28,7 @@ dev = [
 ]
 
 [project.scripts]
-sideclaw = "sideclaw.cli.commands:app"
+sideclaw = "sideclaw.cli.main:app"
 
 [build-system]
 requires = ["hatchling"]

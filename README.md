@@ -48,7 +48,7 @@ sideclaw/
     agent/         # core orchestration loop + context building
     bus/           # async inbound/outbound message queues
     channels/      # platform adapters (Telegram)
-    cli/           # Typer CLI commands
+    cli/           # Typer entrypoint plus command implementations
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
     providers/     # LLM abstraction + OpenRouter implementation

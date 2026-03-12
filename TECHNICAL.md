@@ -16,7 +16,7 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 
 | Component | File(s) | Responsibility |
 | --- | --- | --- |
-| CLI entry points | `sideclaw/cli/commands.py` | Onboarding, status, one-shot and interactive agent mode, gateway runtime |
+| CLI entry points | `sideclaw/cli/main.py`, `sideclaw/cli/commands/*` | Typer entrypoint plus onboarding, status, one-shot and interactive agent mode, gateway runtime |
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channels from agent logic |
 | Agent loop | `sideclaw/agent/loop.py` | Orchestrates LLM calls, tool execution, response publishing, memory consolidation |
 | Prompt builder | `sideclaw/agent/context.py` | Builds system prompt from base identity, templates, memory, runtime info |

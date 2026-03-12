@@ -1,16 +1,12 @@
 import asyncio
+from importlib import import_module
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from typer.testing import CliRunner
 
 from sideclaw.bus.messages import InboundMessage
-from sideclaw.cli.commands import (
-    _approval_config_for_runtime,
-    _handle_message,
-    _reset_cli_session,
-    app,
-)
+from sideclaw.cli.main import app
 from sideclaw.config.loader import load_config, save_config
 from sideclaw.config.schema import (
     AgentConfig,
@@ -36,19 +32,22 @@ def test_status_command() -> None:
 
 def test_approval_config_for_cli_forces_cli_prompt() -> None:
     approval = ApprovalConfig(mode=ApprovalMode.channel_prompt)
-    resolved = _approval_config_for_runtime(approval, channel_prompt=False)
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    resolved = gateway_surface.approval_config_for_runtime(approval, channel_prompt=False)
     assert resolved.mode == ApprovalMode.cli_prompt
 
 
 def test_approval_config_for_gateway_forces_channel_prompt() -> None:
     approval = ApprovalConfig(mode=ApprovalMode.cli_prompt)
-    resolved = _approval_config_for_runtime(approval, channel_prompt=True)
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    resolved = gateway_surface.approval_config_for_runtime(approval, channel_prompt=True)
     assert resolved.mode == ApprovalMode.channel_prompt
 
 
 def test_onboard_command(tmp_path: Path) -> None:
-    with patch("sideclaw.cli.commands.get_config_path", return_value=tmp_path / "config.json"):
-        with patch("sideclaw.cli.commands.DEFAULT_WORKSPACE", tmp_path / "workspace"):
+    onboard_surface = import_module("sideclaw.cli.commands.onboard")
+    with patch.object(onboard_surface, "get_config_path", return_value=tmp_path / "config.json"):
+        with patch.object(onboard_surface, "DEFAULT_WORKSPACE", tmp_path / "workspace"):
             result = runner.invoke(
                 app,
                 ["onboard"],
@@ -70,7 +69,8 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
     existing.channels.telegram = TelegramConfig(token="123:abc", allow_from=["42"])
     save_config(existing, config_path)
 
-    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
+    onboard_surface = import_module("sideclaw.cli.commands.onboard")
+    with patch.object(onboard_surface, "get_config_path", return_value=config_path):
         result = runner.invoke(app, ["onboard"], input="\n" * 11)
         assert result.exit_code == 0
 
@@ -87,8 +87,9 @@ def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> Non
 def test_onboard_captures_web_search_configuration(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
 
-    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
-        with patch("sideclaw.cli.commands.DEFAULT_WORKSPACE", tmp_path / "workspace"):
+    onboard_surface = import_module("sideclaw.cli.commands.onboard")
+    with patch.object(onboard_surface, "get_config_path", return_value=config_path):
+        with patch.object(onboard_surface, "DEFAULT_WORKSPACE", tmp_path / "workspace"):
             result = runner.invoke(
                 app,
                 ["onboard"],
@@ -112,7 +113,8 @@ def test_cron_add_list_and_remove_commands(tmp_path: Path) -> None:
         config_path,
     )
 
-    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
+    cron_surface = import_module("sideclaw.cli.commands.cron")
+    with patch.object(cron_surface, "get_config_path", return_value=config_path):
         add_result = runner.invoke(
             app,
             [
@@ -149,6 +151,51 @@ def test_cron_add_list_and_remove_commands(tmp_path: Path) -> None:
         assert "Removed cron job" in remove_result.output
 
 
+def test_cron_enable_and_disable_commands(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    workspace = tmp_path / "workspace"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(workspace)),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    cron_surface = import_module("sideclaw.cli.commands.cron")
+    with patch.object(cron_surface, "get_config_path", return_value=config_path):
+        add_result = runner.invoke(
+            app,
+            [
+                "cron",
+                "add",
+                "--schedule",
+                "0 9 * * *",
+                "--prompt",
+                "Morning summary",
+                "--channel",
+                "telegram",
+                "--chat-id",
+                "123",
+                "--name",
+                "daily-summary",
+            ],
+        )
+        assert add_result.exit_code == 0
+
+        from sideclaw.cron import CronService
+
+        job_id = CronService(workspace / "cron" / "jobs.json").list_jobs()[0].job_id
+
+        disable_result = runner.invoke(app, ["cron", "disable", job_id])
+        assert disable_result.exit_code == 0
+        assert f"Disabled cron job {job_id}" in disable_result.output
+
+        enable_result = runner.invoke(app, ["cron", "enable", job_id])
+        assert enable_result.exit_code == 0
+        assert f"Enabled cron job {job_id}" in enable_result.output
+
+
 def test_cron_add_rejects_invalid_schedule(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     save_config(
@@ -159,7 +206,8 @@ def test_cron_add_rejects_invalid_schedule(tmp_path: Path) -> None:
         config_path,
     )
 
-    with patch("sideclaw.cli.commands.get_config_path", return_value=config_path):
+    cron_surface = import_module("sideclaw.cli.commands.cron")
+    with patch.object(cron_surface, "get_config_path", return_value=config_path):
         result = runner.invoke(
             app,
             [
@@ -187,7 +235,8 @@ def test_reset_cli_session_clears_persisted_history(tmp_path: Path) -> None:
     session.messages.append({"role": "assistant", "content": "noted"})
     manager.save(session)
 
-    _reset_cli_session(manager, "cli:cli")
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    gateway_surface.reset_cli_session(manager, "cli:cli")
 
     reloaded = SessionManager(session_dir).get_or_create("cli:cli")
     assert reloaded.messages == []
@@ -209,11 +258,52 @@ def test_reset_cli_session_clears_approval_state(tmp_path: Path, monkeypatch) ->
         requirement=ApprovalRequirement.unless_session_approved,
     )
 
-    _reset_cli_session(manager, "cli:cli")
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    gateway_surface.reset_cli_session(manager, "cli:cli")
 
     reloaded = SessionManager(session_dir).get_or_create("cli:cli")
     assert reloaded.approved_approval_keys == set()
     assert reloaded.pending_approval is None
+
+
+def test_agent_message_command(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    agent_surface = import_module("sideclaw.cli.commands.agent")
+    with patch.object(agent_surface, "get_config_path", return_value=config_path):
+        with patch.object(agent_surface, "run_agent", new_callable=AsyncMock) as run_agent:
+            result = runner.invoke(app, ["agent", "--message", "hello"])
+
+    assert result.exit_code == 0
+    run_agent.assert_awaited_once()
+    awaited_config, awaited_message = run_agent.await_args.args
+    assert awaited_message == "hello"
+    assert awaited_config.agent.workspace == str(tmp_path / "workspace")
+
+
+def test_gateway_exits_when_no_channels_configured(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    with patch.object(gateway_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["gateway"])
+
+    assert result.exit_code == 1
+    assert "No channels configured" in result.output
 
 
 async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> None:
@@ -231,7 +321,8 @@ async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> Non
             raise AssertionError(msg)
 
     msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="/new")
-    await _handle_message(StubAgentLoop(), [], manager, asyncio.Semaphore(1), msg)
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    await gateway_surface.handle_message(StubAgentLoop(), [], manager, asyncio.Semaphore(1), msg)
 
     reloaded = SessionManager(session_dir).get_or_create("telegram:123")
     assert reloaded.messages == []
@@ -277,8 +368,11 @@ async def test_handle_message_resolves_pending_approval(tmp_path: Path) -> None:
 
     channel = StubChannel()
     msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="yes")
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
     try:
-        await _handle_message(StubAgentLoop(), [channel], manager, asyncio.Semaphore(1), msg)
+        await gateway_surface.handle_message(
+            StubAgentLoop(), [channel], manager, asyncio.Semaphore(1), msg
+        )
     finally:
         configure(ApprovalConfig())
 
@@ -331,14 +425,15 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
 
     first = InboundMessage(channel="telegram", chat_id="1", sender_id="1", text="first")
     second = InboundMessage(channel="telegram", chat_id="2", sender_id="2", text="second")
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
 
     first_task = asyncio.create_task(
-        _handle_message(agent_loop, [channel], manager, semaphore, first)
+        gateway_surface.handle_message(agent_loop, [channel], manager, semaphore, first)
     )
     await asyncio.wait_for(agent_loop.first_entered.wait(), timeout=1)
 
     second_task = asyncio.create_task(
-        _handle_message(agent_loop, [channel], manager, semaphore, second)
+        gateway_surface.handle_message(agent_loop, [channel], manager, semaphore, second)
     )
     await asyncio.sleep(0.05)
 
