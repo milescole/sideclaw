@@ -1,10 +1,17 @@
 """Status CLI surface."""
 
-from rich.console import Console
-
+from sideclaw.cli.render.console import print_line
+from sideclaw.cli.render.formatting import (
+    format_browser_status,
+    format_heading,
+    format_image_generation_status,
+    format_openrouter_status,
+    format_shell_exec_status,
+    format_telegram_status,
+    format_tts_status,
+    format_web_search_status,
+)
 from sideclaw.config.loader import get_config_path, load_config
-
-console = Console()
 
 
 def status() -> None:
@@ -12,49 +19,26 @@ def status() -> None:
     config_path = get_config_path()
     config = load_config(config_path)
 
-    console.print("[bold]SideClaw Status[/bold]")
-    console.print(f"Config: {config_path} ({'exists' if config_path.exists() else 'not found'})")
-    console.print(f"Workspace: {config.workspace_path}")
-    console.print(f"Model: {config.agent.model}")
-    console.print(
-        f"Shell exec: {'enabled' if config.tools.exec_enabled else 'disabled'} "
-        "(trusted local deployments only)"
+    print_line(format_heading("SideClaw Status"))
+    print_line(f"Config: {config_path} ({'exists' if config_path.exists() else 'not found'})")
+    print_line(f"Workspace: {config.workspace_path}")
+    print_line(f"Model: {config.agent.model}")
+    print_line(format_shell_exec_status(config.tools.exec_enabled))
+    print_line(
+        format_web_search_status(config.tools.web_search_provider, config.tools.web_search_api_key)
     )
-    if config.tools.web_search_provider and config.tools.web_search_api_key:
-        console.print(
-            f"Web search: [green]configured[/green] ({config.tools.web_search_provider.value})"
-        )
-    else:
-        console.print("Web search: [dim]not configured[/dim]")
-    console.print(
-        "Image generation: "
-        + (
-            "[green]configured[/green] "
-            f"({config.tools.fal_model}; "
-            f"{'upscaling on' if config.tools.fal_enable_upscaling else 'upscaling off'})"
-            if config.tools.fal_api_key
-            else "[dim]disabled[/dim]"
+    print_line(
+        format_image_generation_status(
+            config.tools.fal_api_key,
+            config.tools.fal_model,
+            config.tools.fal_enable_upscaling,
         )
     )
-    console.print(
-        "Browser automation: "
-        f"{'[green]enabled[/green]' if config.tools.browser_enabled else '[dim]disabled[/dim]'}"
+    print_line(format_browser_status(config.tools.browser_enabled))
+    print_line(format_tts_status(config.tools.tts.enabled, config.tools.tts.provider))
+    print_line(
+        format_openrouter_status(
+            config.providers.openrouter.api_key if config.providers.openrouter else None
+        )
     )
-    tts_status = (
-        f"[green]enabled[/green] ({config.tools.tts.provider})"
-        if config.tools.tts.enabled
-        else "[dim]disabled[/dim]"
-    )
-    console.print(f"Text-to-speech: {tts_status}")
-
-    if config.providers.openrouter:
-        key = config.providers.openrouter.api_key
-        masked = key[:8] + "..." + key[-4:] if len(key) > 12 else "***"
-        console.print(f"OpenRouter: [green]configured[/green] ({masked})")
-    else:
-        console.print("OpenRouter: [red]not configured[/red]")
-
-    if config.channels.telegram:
-        console.print("Telegram: [green]configured[/green]")
-    else:
-        console.print("Telegram: [dim]not configured[/dim]")
+    print_line(format_telegram_status(config.channels.telegram is not None))

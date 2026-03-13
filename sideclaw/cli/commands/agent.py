@@ -4,14 +4,19 @@ import asyncio
 from typing import Any
 
 import typer
-from rich.console import Console
-from rich.markdown import Markdown
 
+from sideclaw.cli.render.console import print_line, prompt_input
+from sideclaw.cli.render.formatting import (
+    build_agent_header_lines,
+    build_clarify_lines,
+    format_error_message,
+    format_exit_message,
+    format_session_reset_message,
+    render_agent_markdown,
+)
 from sideclaw.config.loader import get_config_path, load_config
 from sideclaw.config.schema import ApprovalConfig, ApprovalMode, Config
 from sideclaw.cron import CronService, cron_store_path
-
-console = Console()
 
 
 def _approval_config_for_runtime(
@@ -45,7 +50,9 @@ def agent(
     config = load_config(get_config_path())
 
     if not config.providers.openrouter:
-        console.print("[red]Error: OpenRouter not configured. Run 'sideclaw onboard' first.[/red]")
+        print_line(
+            format_error_message("Error: OpenRouter not configured. Run 'sideclaw onboard' first.")
+        )
         raise typer.Exit(1)
 
     asyncio.run(run_agent(config, message))
@@ -88,13 +95,9 @@ async def run_agent(config: Config, single_message: str | None = None) -> None:
     agent_loop.register_default_tools()
 
     def _cli_clarify(question: str, choices: list[str] | None) -> str:
-        console.print()
-        console.print(f"[bold yellow]Clarify[/bold yellow] {question}")
-        if choices:
-            for index, choice in enumerate(choices, start=1):
-                console.print(f"  {index}. {choice}")
-            console.print("  0. Other")
-        return console.input("[bold cyan]? [/bold cyan]").strip()
+        for line in build_clarify_lines(question, choices):
+            print_line(line)
+        return prompt_input("[bold cyan]? [/bold cyan]").strip()
 
     if single_message:
         msg = InboundMessage(channel="cli", chat_id="cli", sender_id="cli", text=single_message)
@@ -103,27 +106,28 @@ async def run_agent(config: Config, single_message: str | None = None) -> None:
             response = await agent_loop.process_message(msg)
         finally:
             reset_clarify_callback(clarify_token)
-        console.print(Markdown(response.text))
+        print_line(render_agent_markdown(response.text))
         return
 
-    console.print("[bold green]SideClaw Agent[/bold green] (type 'exit' to quit, '/new' to reset)")
-    console.print(f"Model: {config.agent.model}\n")
+    for line in build_agent_header_lines(config.agent.model):
+        print_line(line)
 
     while True:
         try:
-            user_input = console.input("[bold cyan]> [/bold cyan]").strip()
+            user_input = prompt_input("[bold cyan]> [/bold cyan]").strip()
         except (KeyboardInterrupt, EOFError):
-            console.print("\nBye!")
+            print_line()
+            print_line(format_exit_message())
             break
 
         if not user_input:
             continue
         if user_input.lower() in ("exit", "quit"):
-            console.print("Bye!")
+            print_line(format_exit_message())
             break
         if user_input == "/new":
             _reset_cli_session(session_manager, "cli:cli")
-            console.print("[dim]Session reset.[/dim]")
+            print_line(format_session_reset_message())
             continue
 
         msg = InboundMessage(channel="cli", chat_id="cli", sender_id="cli", text=user_input)
@@ -132,6 +136,6 @@ async def run_agent(config: Config, single_message: str | None = None) -> None:
             response = await agent_loop.process_message(msg)
         finally:
             reset_clarify_callback(clarify_token)
-        console.print()
-        console.print(Markdown(response.text))
-        console.print()
+        print_line()
+        print_line(render_agent_markdown(response.text))
+        print_line()

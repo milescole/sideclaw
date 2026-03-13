@@ -5,14 +5,20 @@ from typing import Any
 
 import typer
 from loguru import logger
-from rich.console import Console
 
+from sideclaw.cli.render.console import print_line
+from sideclaw.cli.render.formatting import (
+    format_error_message,
+    format_gateway_channels_line,
+    format_gateway_header,
+    format_gateway_model_line,
+    format_warning_message,
+)
 from sideclaw.config.loader import get_config_path, load_config
 from sideclaw.config.schema import ApprovalConfig, ApprovalMode, Config
 from sideclaw.cron import CronService, cron_store_path
 from sideclaw.runtime.models import ApprovalScope
 
-console = Console()
 GATEWAY_MAX_CONCURRENCY = 8
 
 
@@ -56,7 +62,9 @@ def gateway() -> None:
     config = load_config(get_config_path())
 
     if not config.providers.openrouter:
-        console.print("[red]Error: OpenRouter not configured. Run 'sideclaw onboard' first.[/red]")
+        print_line(
+            format_error_message("Error: OpenRouter not configured. Run 'sideclaw onboard' first.")
+        )
         raise typer.Exit(1)
 
     asyncio.run(run_gateway(config))
@@ -112,12 +120,14 @@ async def run_gateway(config: Config) -> None:
         channels.append(tg)
 
     if not channels:
-        console.print("[yellow]No channels configured. Use 'sideclaw agent' for CLI mode.[/yellow]")
+        print_line(
+            format_warning_message("No channels configured. Use 'sideclaw agent' for CLI mode.")
+        )
         raise typer.Exit(1)
 
-    console.print("[bold green]SideClaw Gateway[/bold green]")
-    console.print(f"Model: {config.agent.model}")
-    console.print(f"Channels: {', '.join(type(c).__name__ for c in channels)}")
+    print_line(format_gateway_header())
+    print_line(format_gateway_model_line(config.agent.model))
+    print_line(format_gateway_channels_line([type(channel).__name__ for channel in channels]))
 
     for ch in channels:
         await ch.start()

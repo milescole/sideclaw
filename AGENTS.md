@@ -76,7 +76,7 @@ sideclaw/
 ├── browser/       # Playwright-backed browser session management and snapshots
 ├── bus/           # async inbound/outbound queue abstractions
 ├── channels/      # channel adapters; Telegram is the current external gateway
-├── cli/           # Typer entry points for onboard, agent, gateway, cron, status
+├── cli/           # Typer entry points, command surfaces, and CLI rendering helpers
 ├── config/        # Pydantic config schema plus load/save helpers
 ├── cron/          # persisted scheduler service and due-job execution
 ├── memory/        # long-term memory store built on workspace markdown files
@@ -92,7 +92,7 @@ tests/
 ├── agent/         # loop and prompt-builder behavior
 ├── bus/           # queue semantics
 ├── channels/      # Telegram adapter behavior
-├── cli/           # CLI flows and onboarding/status behavior
+├── cli/           # CLI command behavior and render-layer coverage
 ├── config/        # schema and loader coverage
 ├── cron/          # scheduler persistence and due-run logic
 ├── memory/        # durable memory behavior
@@ -108,6 +108,7 @@ tests/
 
 - `sideclaw/cli/main.py`: process entry point and Typer wiring for the CLI.
 - `sideclaw/cli/commands/`: command implementation modules for onboarding, status, agent, cron, and gateway behavior.
+- `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
 - `sideclaw/agent/loop.py`: the core LLM/tool loop, session locking, pending approval resume path, and memory consolidation trigger.
 - `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.
@@ -166,7 +167,7 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
   - `uv run pytest tests/agent/test_prompt_builder.py tests/skills/test_loader.py tests/test_integration.py`
 - For tool changes, run the affected `tests/tools/test_*.py` modules and at least one agent-loop path if registration or approval behavior changed.
 - For CLI/config changes, run:
-  - `uv run pytest tests/cli/test_commands.py tests/config/test_loader.py tests/config/test_schema.py`
+  - `uv run pytest tests/cli/test_commands.py tests/cli/test_render.py tests/config/test_loader.py tests/config/test_schema.py`
 - For session, memory, or cron changes, run the corresponding focused tests and then the full suite if the change crosses subsystem boundaries.
 
 Do not claim a behavior change is safe without running the tests that exercise that subsystem.

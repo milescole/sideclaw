@@ -16,7 +16,7 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 
 | Component | File(s) | Responsibility |
 | --- | --- | --- |
-| CLI entry points | `sideclaw/cli/main.py`, `sideclaw/cli/commands/*` | Typer entrypoint plus onboarding, status, one-shot and interactive agent mode, gateway runtime |
+| CLI entry points | `sideclaw/cli/main.py`, `sideclaw/cli/commands/*`, `sideclaw/cli/render/*` | Typer entrypoint, thin command surfaces, and shared CLI presentation helpers |
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channels from agent logic |
 | Agent loop | `sideclaw/agent/loop.py` | Orchestrates LLM calls, tool execution, response publishing, memory consolidation |
 | Prompt builder | `sideclaw/agent/context.py` | Builds system prompt from base identity, templates, memory, runtime info |
@@ -190,6 +190,16 @@ Telegram implementation (`sideclaw/channels/telegram.py`) provides:
 
 Gateway mode routes outbound responses by matching `response.channel` to `channel_name`.
 
+## 8.1 CLI Render Layer
+
+CLI presentation is split from command behavior:
+
+- `sideclaw/cli/render/console.py` owns shared Rich console access plus input/output helpers.
+- `sideclaw/cli/render/formatting.py` owns reusable markup, display strings, and Rich renderables for status, cron, onboarding, gateway, and interactive agent output.
+- `sideclaw/cli/commands/*` keep command control flow and runtime/config orchestration, but call into the render layer for display concerns.
+
+This keeps the CLI surface thinner without moving runtime logic out of the command modules yet.
+
 ## 9. Cron Scheduling
 
 `CronService` persists jobs to `cron/jobs.json` and runs due jobs in the gateway process.
@@ -226,6 +236,7 @@ Test suite covers:
 - Bus semantics (`tests/bus`)
 - Channel logic (`tests/channels`)
 - CLI flows (`tests/cli`)
+- CLI render helper coverage (`tests/cli/test_render.py`)
 - Config schema/loader (`tests/config`)
 - Cron scheduling and CLI management (`tests/cron`, cron cases in `tests/cli`)
 - Memory/session persistence (`tests/memory`, `tests/session`)

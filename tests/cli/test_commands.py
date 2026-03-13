@@ -30,6 +30,29 @@ def test_status_command() -> None:
     assert "sideclaw" in result.output.lower() or "config" in result.output.lower()
 
 
+def test_status_command_reports_provider_masking(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+            providers=ProvidersConfig(
+                openrouter=OpenRouterConfig(api_key="sk-or-v1-1234567890abcd")
+            ),
+        ),
+        config_path,
+    )
+
+    status_surface = import_module("sideclaw.cli.commands.status")
+    with patch.object(status_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 0
+    assert "OpenRouter: configured" in result.output
+    assert "sk-or-v1" in result.output
+    assert "..." in result.output
+    assert "7890abcd" not in result.output
+
+
 def test_approval_config_for_cli_forces_cli_prompt() -> None:
     approval = ApprovalConfig(mode=ApprovalMode.channel_prompt)
     gateway_surface = import_module("sideclaw.cli.commands.gateway")
@@ -56,6 +79,24 @@ def test_onboard_command(tmp_path: Path) -> None:
             assert result.exit_code == 0
             assert (tmp_path / "workspace" / "AGENTS.md").exists()
             assert (tmp_path / "workspace" / "docs" / "index.md").exists()
+
+
+def test_onboard_merge_mode_notice(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    onboard_surface = import_module("sideclaw.cli.commands.onboard")
+    with patch.object(onboard_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["onboard"], input="\n" * 11)
+
+    assert result.exit_code == 0
+    assert "merge mode enabled" in result.output.lower()
 
 
 def test_onboard_merge_keeps_existing_when_inputs_skipped(tmp_path: Path) -> None:
@@ -149,6 +190,24 @@ def test_cron_add_list_and_remove_commands(tmp_path: Path) -> None:
         remove_result = runner.invoke(app, ["cron", "remove", job_id])
         assert remove_result.exit_code == 0
         assert "Removed cron job" in remove_result.output
+
+
+def test_cron_list_empty_state(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    cron_surface = import_module("sideclaw.cli.commands.cron")
+    with patch.object(cron_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["cron", "list"])
+
+    assert result.exit_code == 0
+    assert "No cron jobs configured" in result.output
 
 
 def test_cron_enable_and_disable_commands(tmp_path: Path) -> None:
@@ -288,6 +347,21 @@ def test_agent_message_command(tmp_path: Path) -> None:
     assert awaited_config.agent.workspace == str(tmp_path / "workspace")
 
 
+def test_agent_requires_openrouter_configuration(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(agent=AgentConfig(workspace=str(tmp_path / "workspace"))),
+        config_path,
+    )
+
+    agent_surface = import_module("sideclaw.cli.commands.agent")
+    with patch.object(agent_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["agent", "--message", "hello"])
+
+    assert result.exit_code == 1
+    assert "Run 'sideclaw onboard' first" in result.output
+
+
 def test_gateway_exits_when_no_channels_configured(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     save_config(
@@ -304,6 +378,21 @@ def test_gateway_exits_when_no_channels_configured(tmp_path: Path) -> None:
 
     assert result.exit_code == 1
     assert "No channels configured" in result.output
+
+
+def test_gateway_requires_openrouter_configuration(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        Config(agent=AgentConfig(workspace=str(tmp_path / "workspace"))),
+        config_path,
+    )
+
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+    with patch.object(gateway_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["gateway"])
+
+    assert result.exit_code == 1
+    assert "Run 'sideclaw onboard' first" in result.output
 
 
 async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> None:

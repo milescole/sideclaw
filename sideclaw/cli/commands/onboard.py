@@ -3,8 +3,13 @@
 from pathlib import Path
 
 import typer
-from rich.console import Console
 
+from sideclaw.cli.render.console import print_line
+from sideclaw.cli.render.formatting import (
+    format_created_file_line,
+    format_success_message,
+    format_warning_message,
+)
 from sideclaw.config.loader import get_config_path, load_config, save_config
 from sideclaw.config.schema import (
     AgentConfig,
@@ -17,7 +22,6 @@ from sideclaw.config.schema import (
 from sideclaw.tools.image import normalize_fal_model_id
 from sideclaw.workspace import sync_workspace_templates
 
-console = Console()
 DEFAULT_WORKSPACE = Path.home() / ".sideclaw" / "workspace"
 
 
@@ -25,7 +29,7 @@ def onboard() -> None:
     """Set up SideClaw for the first time."""
     config_path = get_config_path()
     if config_path.exists():
-        console.print(f"[yellow]Config exists at {config_path}; merge mode enabled.[/yellow]")
+        print_line(format_warning_message(f"Config exists at {config_path}; merge mode enabled."))
         config = load_config(config_path)
     else:
         config = Config(
@@ -79,8 +83,10 @@ def onboard() -> None:
             config.tools.web_search_provider = WebSearchProvider.brave
             config.tools.web_search_api_key = search_key
         else:
-            console.print(
-                "[yellow]Web search not configured; leaving web_search disabled.[/yellow]"
+            print_line(
+                format_warning_message(
+                    "Web search not configured; leaving web_search disabled."
+                )
             )
             config.tools.web_search_provider = None
             config.tools.web_search_api_key = None
@@ -126,9 +132,10 @@ def onboard() -> None:
                     or config.tools.fal_upscaler_model
                 )
         else:
-            console.print(
-                "[yellow]Image generation not configured; leaving "
-                "image generation disabled.[/yellow]"
+            print_line(
+                format_warning_message(
+                    "Image generation not configured; leaving image generation disabled."
+                )
             )
             config.tools.fal_api_key = None
 
@@ -192,18 +199,20 @@ def onboard() -> None:
         if token:
             config.channels.telegram = TelegramConfig(token=token, allow_from=allow_from)
         else:
-            console.print("[yellow]Telegram token empty; leaving Telegram disabled.[/yellow]")
+            print_line(format_warning_message("Telegram token empty; leaving Telegram disabled."))
 
     save_config(config, config_path)
 
     workspace = config.workspace_path
     created_files = sync_workspace_templates(workspace)
     for created_file in created_files:
-        console.print(f"  Created {created_file.relative_to(workspace)}")
+        print_line(format_created_file_line(str(created_file.relative_to(workspace))))
 
-    console.print(f"[green]Config saved to {config_path}[/green]")
-    console.print(f"[green]Workspace created at {workspace}[/green]")
-    console.print(
-        "[yellow]Shell exec is disabled by default. "
-        "Enable tools.exec_enabled only for trusted local deployments.[/yellow]"
+    print_line(format_success_message(f"Config saved to {config_path}"))
+    print_line(format_success_message(f"Workspace created at {workspace}"))
+    print_line(
+        format_warning_message(
+            "Shell exec is disabled by default. "
+            "Enable tools.exec_enabled only for trusted local deployments."
+        )
     )

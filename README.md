@@ -20,6 +20,7 @@ SideClaw is designed for fast iteration on practical assistants:
 - Clear component boundaries
 - Real tool execution (files, shell, web, memory)
 - Easy local development with `uv`, `pytest`, and `typer`
+- A dedicated CLI render layer so command logic stays separate from presentation
 
 ## Architecture At A Glance
 
@@ -48,7 +49,7 @@ sideclaw/
     agent/         # core orchestration loop + context building
     bus/           # async inbound/outbound message queues
     channels/      # platform adapters (Telegram)
-    cli/           # Typer entrypoint plus command implementations
+    cli/           # Typer entrypoint, command surfaces, and shared CLI render helpers
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
     providers/     # LLM abstraction + OpenRouter implementation
@@ -188,6 +189,13 @@ variables, blocks obviously dangerous command patterns, and requires explicit CL
 mutating commands. Gateway/channel usage is denied by default.
 
 ## Development
+
+CLI presentation code lives under `sideclaw/cli/render/`:
+
+- `console.py`: shared Rich console I/O helpers
+- `formatting.py`: pure formatting/renderable helpers reused by CLI commands
+
+That keeps `sideclaw/cli/commands/` focused on control flow, config loading, and runtime orchestration rather than inline Rich markup assembly.
 
 Run tests:
 
