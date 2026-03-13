@@ -1,11 +1,11 @@
 """Runtime service facade."""
 
 from sideclaw.bus.messages import InboundMessage
+from sideclaw.runtime.execution.output import build_text_output
 from sideclaw.runtime.loop import RuntimeLoop
 from sideclaw.runtime.models.approval import ApprovalScope
 from sideclaw.runtime.models.context import RuntimeContext
 from sideclaw.runtime.models.events import RuntimeEvent, RuntimeEventKind
-from sideclaw.runtime.models.outputs import RuntimeOutput
 from sideclaw.runtime.models.requests import RunRequest
 from sideclaw.runtime.models.results import RunResult, RunStatus
 from sideclaw.runtime.state import RunPhase, RuntimeState
@@ -43,7 +43,7 @@ class RuntimeService:
                 )
             )
 
-        state.add_output(RuntimeOutput.text(response.text))
+        state.add_output(build_text_output(response.text))
         state.add_event(
             RuntimeEvent(
                 kind=RuntimeEventKind.run_completed,
@@ -66,7 +66,7 @@ class RuntimeService:
             self._request_to_message(request),
             scope,
         )
-        state.add_output(RuntimeOutput.text(output_text))
+        state.add_output(build_text_output(output_text))
         state.add_event(
             RuntimeEvent(
                 kind=RuntimeEventKind.run_completed,

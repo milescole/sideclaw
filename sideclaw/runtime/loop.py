@@ -3,9 +3,6 @@
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import json_repair
-from loguru import logger
-
 from sideclaw.agent.prompt_builder import PromptBuilder
 from sideclaw.agent.tools import build_default_tool_registry
 from sideclaw.bus.messages import InboundMessage, OutboundMessage
@@ -13,26 +10,33 @@ from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
 from sideclaw.providers.base import LLMProvider, LLMResponse
-from sideclaw.runtime.approval import (
-    approve_pending,
-    check_approval,
-    clear_pending,
-    format_approval_prompt,
-    get_pending,
-    set_pending,
-)
+from sideclaw.runtime.approval import get_pending
 from sideclaw.runtime.context import (
-    ToolRuntimeContext,
     reset_tool_runtime_context,
-    set_tool_runtime_context,
+)
+from sideclaw.runtime.execution.output import build_outbound_message
+from sideclaw.runtime.execution.persistence import (
+    consolidate_memory,
+    parse_consolidated_memory,
+    persist_session_state,
+    save_session_state,
+)
+from sideclaw.runtime.execution.prepare import (
+    bind_tool_runtime_context,
+    prepare_new_run,
+    prepare_resume_run,
+    runtime_context_for_message,
+)
+from sideclaw.runtime.execution.tool_runner import (
+    build_assistant_tool_message,
+    execute_tool_call,
+    resume_pending_tool_execution,
+    run_provider_tool_loop,
 )
 from sideclaw.runtime.models.approval import (
     ApprovalScope,
-    ToolExecutionOutcome,
     ToolExecutionResult,
 )
-from sideclaw.runtime.models.context import RuntimeContext
-from sideclaw.runtime.models.requests import RunRequest
 from sideclaw.runtime.models.results import RunResult, RunStatus
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
@@ -91,36 +95,30 @@ class RuntimeLoop:
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the runtime loop."""
-        runtime_context = self._runtime_context_for_message(msg)
-        session_key = runtime_context.session_key
-        context_token = set_tool_runtime_context(
-            ToolRuntimeContext(
-                channel=runtime_context.surface,
-                chat_id=runtime_context.conversation_id,
-                sender_id=runtime_context.user_id or "",
-                session_key=runtime_context.session_key,
-            )
+        prepared = prepare_new_run(
+            msg,
+            session_manager=self._session_manager,
+            prompt_builder=self._context,
+            history_limit=self._session_history_limit(),
         )
-        lock = self._session_manager.get_lock(session_key)
+        runtime_context = prepared.runtime_context
+        context_token = bind_tool_runtime_context(runtime_context)
 
         try:
-            async with lock:
-                session = self._session_manager.get_or_create(session_key)
-                messages = self._context.build_messages(
-                    session.get_history(max_messages=self._session_history_limit()),
-                    msg.text,
-                    channel=runtime_context.surface,
-                    chat_id=runtime_context.conversation_id,
-                )
-
+            async with prepared.lock:
+                session = prepared.session
+                messages = prepared.messages
                 session.messages.append({"role": "user", "content": msg.text})
                 text = await self._run_provider_loop(session, messages)
 
-                self._session_manager.save(session)
-
-                unconsolidated = len(session.messages) - session.last_consolidated
-                if unconsolidated >= self._config.agent.memory_window:
-                    await self._consolidate_memory(session)
+                await persist_session_state(
+                    session=session,
+                    session_manager=self._session_manager,
+                    config=self._config,
+                    provider=self._provider,
+                    memory_store=self._memory,
+                    workspace_docs=self._workspace_docs,
+                )
 
                 result = RunResult(
                     run_id=runtime_context.run_id,
@@ -129,10 +127,12 @@ class RuntimeLoop:
                     surface=runtime_context.surface,
                     conversation_id=runtime_context.conversation_id,
                 )
-                return OutboundMessage(
-                    channel=result.surface or msg.channel,
-                    chat_id=result.conversation_id or msg.chat_id,
-                    text=result.output_text,
+                return build_outbound_message(
+                    output_text=result.output_text,
+                    surface=result.surface,
+                    conversation_id=result.conversation_id,
+                    fallback_channel=msg.channel,
+                    fallback_chat_id=msg.chat_id,
                 )
         finally:
             reset_tool_runtime_context(context_token)
@@ -143,89 +143,42 @@ class RuntimeLoop:
         scope: ApprovalScope | None,
     ) -> str:
         """Resume a previously paused approval-gated execution."""
-        runtime_context = self._runtime_context_for_message(msg)
-        session_key = runtime_context.session_key
-        context_token = set_tool_runtime_context(
-            ToolRuntimeContext(
-                channel=runtime_context.surface,
-                chat_id=runtime_context.conversation_id,
-                sender_id=runtime_context.user_id or "",
-                session_key=runtime_context.session_key,
-            )
+        prepared = prepare_resume_run(
+            msg,
+            session_manager=self._session_manager,
+            prompt_builder=self._context,
+            history_limit=self._session_history_limit(),
         )
-        lock = self._session_manager.get_lock(session_key)
+        runtime_context = prepared.runtime_context
+        context_token = bind_tool_runtime_context(runtime_context)
 
         try:
-            async with lock:
-                session = self._session_manager.get_or_create(session_key)
+            async with prepared.lock:
+                session = prepared.session
                 request = get_pending(session)
                 if request is None:
                     return "No pending approval."
 
-                decision = approve_pending(session, scope)
-                deferred_tool_calls = list(session.deferred_tool_calls)
-                if not decision.approved:
-                    clear_pending(session)
-                    self._session_manager.save(session)
-                    return "Denied."
-
-                clear_pending(session)
-                messages = self._build_messages_from_session(
-                    session,
-                    channel=runtime_context.surface,
-                    chat_id=runtime_context.conversation_id,
+                content, should_save = await resume_pending_tool_execution(
+                    session=session,
+                    scope=scope,
+                    messages=prepared.messages,
+                    provider=self._provider,
+                    registry=self._registry,
+                    config=self._config,
+                    max_tool_iterations=MAX_TOOL_ITERATIONS,
                 )
-
-                approved_result = await self._registry.execute(
-                    request.tool_name,
-                    request.arguments,
-                )
-                approved_tool_msg = {
-                    "role": "tool",
-                    "tool_call_id": request.tool_call_id,
-                    "name": request.tool_name,
-                    "content": approved_result,
-                }
-                messages.append(approved_tool_msg)
-                session.messages.append(approved_tool_msg)
-
-                for index, deferred in enumerate(deferred_tool_calls):
-                    result = await self._execute_tool_call(
-                        session,
-                        deferred["name"],
-                        deferred["arguments"],
-                        deferred["id"],
-                        deferred_tool_calls[index + 1 :],
-                    )
-                    if result.outcome == ToolExecutionOutcome.pending:
-                        self._session_manager.save(session)
-                        return result.content
-
-                    tool_msg = {
-                        "role": "tool",
-                        "tool_call_id": deferred["id"],
-                        "name": deferred["name"],
-                        "content": result.content,
-                    }
-                    messages.append(tool_msg)
-                    session.messages.append(tool_msg)
-
-                content = await self._run_provider_loop(session, messages)
-                self._session_manager.save(session)
+                if should_save:
+                    save_session_state(session=session, session_manager=self._session_manager)
                 return content
         finally:
             reset_tool_runtime_context(context_token)
 
     @staticmethod
-    def _runtime_context_for_message(msg: InboundMessage) -> RuntimeContext:
+    def _runtime_context_for_message(msg: InboundMessage):
         """Convert a transport message into semantic runtime context."""
-        request = RunRequest(
-            input_text=msg.text,
-            surface=msg.channel,
-            conversation_id=msg.chat_id,
-            user_id=msg.sender_id,
-        )
-        return RuntimeContext.from_request(request)
+        _request, runtime_context = runtime_context_for_message(msg)
+        return runtime_context
 
     async def _run_provider_loop(
         self,
@@ -233,59 +186,14 @@ class RuntimeLoop:
         messages: list[dict[str, Any]],
     ) -> str:
         """Drive the provider/tool loop until text output or pending approval."""
-        tools = self._registry.get_definitions() or None
-
-        for _iteration in range(MAX_TOOL_ITERATIONS):
-            response = await self._provider.chat(
-                messages=messages,
-                tools=tools,
-                model=self._config.agent.model,
-                max_tokens=self._config.agent.max_tokens,
-                temperature=self._config.agent.temperature,
-            )
-
-            if response.finish_reason == "error":
-                content = response.content or "An error occurred."
-                session.messages.append({"role": "assistant", "content": response.content})
-                return content
-
-            if response.tool_calls:
-                assistant_msg = self._build_assistant_tool_msg(response)
-                messages.append(assistant_msg)
-                session.messages.append(assistant_msg)
-
-                for index, tc in enumerate(response.tool_calls):
-                    result = await self._execute_tool_call(
-                        session,
-                        tc.name,
-                        tc.arguments,
-                        tc.id,
-                        [
-                            {"id": other.id, "name": other.name, "arguments": other.arguments}
-                            for other in response.tool_calls[index + 1 :]
-                        ],
-                    )
-
-                    if result.outcome == ToolExecutionOutcome.pending:
-                        return result.content
-
-                    tool_msg = {
-                        "role": "tool",
-                        "tool_call_id": tc.id,
-                        "name": tc.name,
-                        "content": result.content,
-                    }
-                    messages.append(tool_msg)
-                    session.messages.append(tool_msg)
-                continue
-
-            content = response.content or ""
-            session.messages.append({"role": "assistant", "content": content})
-            return content
-
-        content = "(Stopped: too many tool iterations)"
-        session.messages.append({"role": "assistant", "content": content})
-        return content
+        return await run_provider_tool_loop(
+            session=session,
+            messages=messages,
+            provider=self._provider,
+            registry=self._registry,
+            config=self._config,
+            max_tool_iterations=MAX_TOOL_ITERATIONS,
+        )
 
     async def _execute_tool_call(
         self,
@@ -296,73 +204,18 @@ class RuntimeLoop:
         deferred_tool_calls: list[dict[str, str]],
     ) -> ToolExecutionResult:
         """Check approval and execute a tool call if allowed."""
-        try:
-            params = json_repair.loads(arguments)
-            if not isinstance(params, dict):
-                params = {}
-        except (TypeError, ValueError):
-            params = {}
-        logger.debug(f"Executing tool: {name}({params})")
-
-        tool, validation_error = self._registry.resolve_call(name, params)
-        if validation_error is not None:
-            return ToolExecutionResult(
-                outcome=ToolExecutionOutcome.success,
-                content=validation_error,
-            )
-        if tool is None:
-            return ToolExecutionResult(
-                outcome=ToolExecutionOutcome.denied,
-                content=f"Error: Unknown tool '{name}'",
-            )
-        decision = check_approval(
+        return await execute_tool_call(
             session=session,
-            tool_name=name,
-            action_type=tool.approval_action_type(**params),
-            description=tool.approval_description(**params),
-            subject=tool.approval_subject(**params),
-            approval_key=tool.approval_key(**params),
-            requirement=tool.approval_requirement(**params),
-            arguments=params,
-            display_arguments=tool.display_arguments(**params),
+            registry=self._registry,
+            name=name,
+            arguments=arguments,
             tool_call_id=tool_call_id,
-        )
-
-        if decision.status == "pending" and decision.request is not None:
-            set_pending(session, decision.request)
-            session.deferred_tool_calls = deferred_tool_calls
-            return ToolExecutionResult(
-                outcome=ToolExecutionOutcome.pending,
-                content=decision.message or format_approval_prompt(decision.request),
-                approval_request=decision.request,
-            )
-
-        if decision.status == "denied":
-            return ToolExecutionResult(
-                outcome=ToolExecutionOutcome.denied,
-                content=decision.message
-                or f"Error: {tool.approval_description(**params)} not approved",
-            )
-
-        return ToolExecutionResult(
-            outcome=ToolExecutionOutcome.success,
-            content=await self._registry.execute(name, params),
+            deferred_tool_calls=deferred_tool_calls,
         )
 
     def _build_assistant_tool_msg(self, response: LLMResponse) -> dict[str, Any]:
         """Build an assistant message with tool calls for the message history."""
-        return {
-            "role": "assistant",
-            "content": response.content,
-            "tool_calls": [
-                {
-                    "id": tc.id,
-                    "type": "function",
-                    "function": {"name": tc.name, "arguments": tc.arguments},
-                }
-                for tc in response.tool_calls
-            ],
-        }
+        return build_assistant_tool_message(response)
 
     def _build_messages_from_session(
         self,
@@ -388,73 +241,16 @@ class RuntimeLoop:
 
     async def _consolidate_memory(self, session: Session) -> None:
         """Consolidate old messages into long-term memory via LLM."""
-        old_messages = session.messages[
-            session.last_consolidated : -self._config.agent.memory_window
-        ]
-        if not old_messages:
-            return
-
-        current_memory = self._memory.read_long_term()
-        summary_prompt = (
-            "Summarize the key durable information from these messages. "
-            "Merge with the existing long-term memory. "
-            "Return only JSON with keys durable_facts, decisions, and preferences. "
-            "Each value must be an array of short markdown bullet lines without headings.\n\n"
-            f"## Current Memory\n{current_memory}\n\n"
-            f"## Messages to Consolidate\n"
+        await consolidate_memory(
+            session=session,
+            session_manager=self._session_manager,
+            config=self._config,
+            provider=self._provider,
+            memory_store=self._memory,
+            workspace_docs=self._workspace_docs,
         )
-        for msg in old_messages:
-            if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                summary_prompt += f"**{msg['role']}**: {msg['content']}\n"
-
-        try:
-            response = await self._provider.chat(
-                messages=[{"role": "user", "content": summary_prompt}],
-                model=self._config.agent.model,
-            )
-            if response.content:
-                sections = self._parse_consolidated_memory(response.content)
-                if sections:
-                    self._workspace_docs.update_long_term_sections(sections)
-                entry_parts = [
-                    msg["content"][:100]
-                    for msg in old_messages
-                    if msg.get("role") == "user" and msg.get("content")
-                ]
-                if entry_parts:
-                    self._memory.append_history(f"Topics: {'; '.join(entry_parts[:3])}")
-                session.last_consolidated = len(session.messages) - self._config.agent.memory_window
-                self._session_manager.save(session)
-                logger.info("Memory consolidated")
-        except (RuntimeError, OSError, ValueError, TimeoutError) as e:
-            logger.error(f"Memory consolidation failed: {e}")
 
     @staticmethod
     def _parse_consolidated_memory(content: str) -> dict[str, str]:
         """Parse the structured long-term memory update returned by the LLM."""
-        try:
-            payload = json_repair.loads(content)
-        except (TypeError, ValueError):
-            payload = {}
-
-        if isinstance(payload, dict):
-            sections: dict[str, str] = {}
-            for field, section in (
-                ("durable_facts", "Durable Facts"),
-                ("decisions", "Decisions"),
-                ("preferences", "Preferences"),
-            ):
-                value = payload.get(field)
-                if isinstance(value, list):
-                    lines = [str(item).strip() for item in value if str(item).strip()]
-                    if lines:
-                        sections[section] = "\n".join(lines)
-                elif isinstance(value, str) and value.strip():
-                    sections[section] = value.strip()
-            if sections:
-                return sections
-
-        fallback_lines = [line.strip() for line in content.splitlines() if line.strip()]
-        if not fallback_lines:
-            return {}
-        return {"Durable Facts": "\n".join(fallback_lines)}
+        return parse_consolidated_memory(content)

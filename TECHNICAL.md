@@ -27,7 +27,7 @@ The runtime now exposes an explicit run boundary:
 | App composition layer | `sideclaw/app/factory.py`, `sideclaw/app/cli.py`, `sideclaw/app/gateway.py` | Shared runtime construction plus surface-specific approval/policy adaptation |
 | Runtime boundary | `sideclaw/runtime/service.py`, `sideclaw/runtime/state.py`, `sideclaw/runtime/models/*` | Stable run API (`RunRequest`/`RunResult`), transient run state, and typed runtime models |
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
-| Runtime loop | `sideclaw/runtime/loop.py` | Current LLM/tool orchestration engine used behind the runtime boundary |
+| Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
 | Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/openrouter.py` | LLM abstraction and OpenRouter implementation via LiteLLM |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools and registry for schema/export/dispatch |
@@ -54,19 +54,19 @@ sequenceDiagram
     App->>Runtime: run(RunRequest)
     Runtime->>Agent: process_message(InboundMessage)
     Agent->>Session: get_or_create(channel:chat_id)
-    Agent->>Agent: build system + history context
-    Agent->>LLM: chat(messages, tools)
+    Agent->>Agent: prepare prompt + runtime context
+    Agent->>LLM: llm_driver.chat(messages, tools)
 
     alt model requests tool calls
         LLM-->>Agent: tool_calls[]
-        Agent->>Tools: execute(name, args)
+        Agent->>Tools: tool_runner.execute(name, args)
         Tools-->>Agent: tool result text
-        Agent->>LLM: chat(updated messages)
+        Agent->>LLM: llm_driver.chat(updated messages)
     else model returns final text
         LLM-->>Agent: assistant content
     end
 
-    Agent->>Session: save(session)
+    Agent->>Session: persistence.save(session)
     Runtime-->>App: RunResult
     App->>Channel: send OutboundMessage
     Channel->>User: Send response
@@ -109,6 +109,9 @@ The runtime boundary uses a few typed models to separate execution semantics fro
 - `RunResult`: final runtime status plus output text, outputs, and events
 
 Today `RuntimeService` adapts `RunRequest` into the existing `InboundMessage`-driven `RuntimeLoop`, but the public boundary is runtime-shaped rather than channel-shaped.
+
+Internally, `RuntimeLoop` now delegates execution work to `sideclaw/runtime/execution/prepare.py`,
+`llm_driver.py`, `tool_runner.py`, `persistence.py`, and `output.py` instead of owning those steps inline.
 
 ## 5. Data and Persistence Model
 

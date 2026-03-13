@@ -59,10 +59,11 @@ Use targeted tests while iterating, for example `uv run pytest tests/tools/test_
 channel/CLI input
   -> runtime service
   -> runtime loop
-  -> prompt builder + workspace context + skill loading
-  -> provider chat call
-  -> optional tool execution loop
-  -> session save + optional memory consolidation
+  -> execution/prepare + prompt builder + workspace context + skill loading
+  -> execution/llm_driver provider call
+  -> optional execution/tool_runner loop
+  -> execution/persistence save + optional memory consolidation
+  -> execution/output result shaping
   -> run result
   -> channel adapter
 ```
@@ -116,7 +117,8 @@ tests/
 - `sideclaw/app/cli.py` and `sideclaw/app/gateway.py`: surface-specific composition hooks for approval semantics and future host divergence.
 - `sideclaw/runtime/service.py`: stable run boundary used by CLI and gateway surfaces; adapts `RunRequest`/`RunResult` to the runtime loop.
 - `sideclaw/runtime/state.py`: in-memory run-scoped state, events, outputs, and lifecycle phase tracking.
-- `sideclaw/runtime/loop.py`: the shared LLM/tool orchestration loop, session locking, pending approval resume path, and memory consolidation trigger.
+- `sideclaw/runtime/loop.py`: the shared orchestration shell for session locking, pending approval resume, and execution-module coordination.
+- `sideclaw/runtime/execution/`: internal execution helpers for prepare, LLM driver, tool runner, persistence, and output shaping.
 - `sideclaw/runtime/models/`: typed run request/result/context/event/output shapes.
 - `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.

@@ -210,6 +210,7 @@ Runtime assembly now lives under `sideclaw/app/`:
 Run-level execution lives under `sideclaw/runtime/`:
 
 - `loop.py`: the shared `RuntimeLoop` orchestration shell
+- `execution/`: internal execution modules for prepare, LLM driver, tool runner, persistence, and output work
 - `models/`: typed shapes such as `RunRequest`, `RuntimeContext`, `RuntimeEvent`, `RuntimeOutput`, and `RunResult`
 - `service.py`: the stable facade surfaces call for `run(...)` and `resume_pending(...)`
 - `state.py`: transient in-memory run state for the current execution
