@@ -17,9 +17,10 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 | Component | File(s) | Responsibility |
 | --- | --- | --- |
 | CLI entry points | `sideclaw/cli/main.py`, `sideclaw/cli/commands/*`, `sideclaw/cli/render/*` | Typer entrypoint, thin command surfaces, and shared CLI presentation helpers |
+| App composition layer | `sideclaw/app/factory.py`, `sideclaw/app/cli.py`, `sideclaw/app/gateway.py` | Shared runtime construction plus surface-specific approval/policy adaptation |
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channels from agent logic |
 | Agent loop | `sideclaw/agent/loop.py` | Orchestrates LLM calls, tool execution, response publishing, memory consolidation |
-| Prompt builder | `sideclaw/agent/context.py` | Builds system prompt from base identity, templates, memory, runtime info |
+| Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
 | Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/openrouter.py` | LLM abstraction and OpenRouter implementation via LiteLLM |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools and registry for schema/export/dispatch |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
@@ -33,6 +34,7 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 sequenceDiagram
     participant User
     participant Channel
+    participant App as app/cli.py or app/gateway.py
     participant Bus as MessageBus
     participant Agent as AgentLoop
     participant LLM as OpenRouterProvider
@@ -40,7 +42,8 @@ sequenceDiagram
     participant Session as SessionManager
 
     User->>Channel: Send message
-    Channel->>Bus: publish_inbound(InboundMessage)
+    Channel->>App: invoke surface runtime
+    App->>Bus: publish_inbound(InboundMessage)
     Bus->>Agent: consume_inbound()
     Agent->>Session: get_or_create(channel:chat_id)
     Agent->>Agent: build system + history context
@@ -67,15 +70,14 @@ sequenceDiagram
 
 ## 4. Prompt and Context Assembly
 
-`ContextBuilder` composes the system prompt from:
+`PromptBuilder` composes the system prompt from:
 
-1. A built-in baseline identity string
-2. Bootstrap files in workspace (when present):
-   - `IDENTITY.md`
+1. Canonical workspace docs on the hot path:
+   - `AGENTS.md`
    - `SOUL.md`
-   - `USER.md`
-   - `TOOLS.md`
-3. Long-term memory (`memory/MEMORY.md`) if available
+   - `docs/core-beliefs.md`
+2. Routed workspace docs from `sideclaw/workspace/context.py`
+3. Long-term memory and workspace history when relevant
 4. Runtime metadata:
    - UTC timestamp
    - channel
@@ -138,7 +140,7 @@ All tools implement `Tool`:
 - Dispatches calls by name
 - Catches tool exceptions at boundary and returns error strings
 
-Default tools registered by `AgentLoop.register_default_tools()`:
+Default tools are registered during app composition, currently by `build_cli_runtime()` and `build_gateway_runtime()`:
 
 - Filesystem: `read_file`, `write_file`, `edit_file`, `list_dir`
 - Execution: `exec`
@@ -192,13 +194,15 @@ Gateway mode routes outbound responses by matching `response.channel` to `channe
 
 ## 8.1 CLI Render Layer
 
-CLI presentation is split from command behavior:
+CLI presentation and runtime construction are both split from command behavior:
 
 - `sideclaw/cli/render/console.py` owns shared Rich console access plus input/output helpers.
 - `sideclaw/cli/render/formatting.py` owns reusable markup, display strings, and Rich renderables for status, cron, onboarding, gateway, and interactive agent output.
-- `sideclaw/cli/commands/*` keep command control flow and runtime/config orchestration, but call into the render layer for display concerns.
+- `sideclaw/cli/commands/*` keep command control flow and config loading only.
+- `sideclaw/app/factory.py` builds the shared runtime graph lazily so unrelated CLI commands do not import runtime-heavy dependencies at process startup.
+- `sideclaw/app/cli.py` and `sideclaw/app/gateway.py` adapt the shared graph for their host surfaces.
 
-This keeps the CLI surface thinner without moving runtime logic out of the command modules yet.
+This keeps the CLI surface thin while preserving a dedicated place for future gateway/API/web composition differences.
 
 ## 9. Cron Scheduling
 
@@ -268,13 +272,13 @@ uv run pytest
 
 1. Implement `LLMProvider` in `sideclaw/providers/`
 2. Extend config schema for provider credentials/options
-3. Wire provider creation in CLI boot paths (`agent`, `gateway`)
+3. Wire provider creation in `sideclaw/app/factory.py`
 
 ### Add a new channel
 
 1. Implement `BaseChannel` in `sideclaw/channels/`
 2. Add config schema section
-3. Instantiate in gateway startup path
+3. Instantiate in `sideclaw/cli/commands/gateway.py` using the runtime built by `sideclaw/app/gateway.py`
 4. Add focused tests for filtering, lifecycle, and outbound behavior
 
 ## 14. External Documentation

@@ -5,6 +5,8 @@ from typing import Any
 
 import typer
 
+from sideclaw.app.cli import build_cli_runtime
+from sideclaw.bus.messages import InboundMessage
 from sideclaw.cli.render.console import print_line, prompt_input
 from sideclaw.cli.render.formatting import (
     build_agent_header_lines,
@@ -15,24 +17,8 @@ from sideclaw.cli.render.formatting import (
     render_agent_markdown,
 )
 from sideclaw.config.loader import get_config_path, load_config
-from sideclaw.config.schema import ApprovalConfig, ApprovalMode, Config
-from sideclaw.cron import CronService, cron_store_path
-
-
-def _approval_config_for_runtime(
-    approval: ApprovalConfig,
-    *,
-    channel_prompt: bool,
-) -> ApprovalConfig:
-    """Map the configured policy to the current runtime surface."""
-    if approval.mode == ApprovalMode.auto_deny:
-        return approval
-
-    target_mode = ApprovalMode.channel_prompt if channel_prompt else ApprovalMode.cli_prompt
-    if approval.mode == target_mode:
-        return approval
-
-    return approval.model_copy(update={"mode": target_mode})
+from sideclaw.config.schema import Config
+from sideclaw.runtime.clarify import reset_clarify_callback, set_clarify_callback
 
 
 def _reset_cli_session(session_manager: Any, session_key: str = "cli:cli") -> None:
@@ -60,39 +46,9 @@ def agent(
 
 async def run_agent(config: Config, single_message: str | None = None) -> None:
     """Run the agent loop in CLI mode."""
-    from sideclaw.agent.loop import AgentLoop
-    from sideclaw.bus.messages import InboundMessage
-    from sideclaw.bus.queue import MessageBus
-    from sideclaw.providers.openrouter import OpenRouterProvider
-    from sideclaw.runtime.approval import configure as configure_approval
-    from sideclaw.runtime.clarify import reset_clarify_callback, set_clarify_callback
-    from sideclaw.session.manager import SessionManager
-
-    workspace = config.workspace_path
-    workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "sessions").mkdir(exist_ok=True)
-
-    bus = MessageBus()
-    provider = OpenRouterProvider(
-        api_key=config.providers.openrouter.api_key,
-        default_model=config.agent.model,
-        api_base=config.providers.openrouter.api_base,
-    )
-    session_manager = SessionManager(workspace / "sessions")
-    cron_service = CronService(
-        cron_store_path(workspace),
-        poll_interval_seconds=config.cron.poll_interval_seconds,
-    )
-    agent_loop = AgentLoop(
-        config=config,
-        bus=bus,
-        provider=provider,
-        session_manager=session_manager,
-        workspace=workspace,
-        cron_service=cron_service,
-    )
-    configure_approval(_approval_config_for_runtime(config.approval, channel_prompt=False))
-    agent_loop.register_default_tools()
+    runtime = build_cli_runtime(config)
+    agent_loop = runtime.agent_loop
+    session_manager = runtime.session_manager
 
     def _cli_clarify(question: str, choices: list[str] | None) -> str:
         for line in build_clarify_lines(question, choices):

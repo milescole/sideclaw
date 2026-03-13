@@ -6,6 +6,7 @@ from typing import Any
 import typer
 from loguru import logger
 
+from sideclaw.app.gateway import build_gateway_runtime
 from sideclaw.cli.render.console import print_line
 from sideclaw.cli.render.formatting import (
     format_error_message,
@@ -15,27 +16,10 @@ from sideclaw.cli.render.formatting import (
     format_warning_message,
 )
 from sideclaw.config.loader import get_config_path, load_config
-from sideclaw.config.schema import ApprovalConfig, ApprovalMode, Config
-from sideclaw.cron import CronService, cron_store_path
+from sideclaw.config.schema import Config
 from sideclaw.runtime.models import ApprovalScope
 
 GATEWAY_MAX_CONCURRENCY = 8
-
-
-def approval_config_for_runtime(
-    approval: ApprovalConfig,
-    *,
-    channel_prompt: bool,
-) -> ApprovalConfig:
-    """Map the configured policy to the current runtime surface."""
-    if approval.mode == ApprovalMode.auto_deny:
-        return approval
-
-    target_mode = ApprovalMode.channel_prompt if channel_prompt else ApprovalMode.cli_prompt
-    if approval.mode == target_mode:
-        return approval
-
-    return approval.model_copy(update={"mode": target_mode})
 
 
 def reset_cli_session(session_manager: Any, session_key: str = "cli:cli") -> None:
@@ -72,38 +56,12 @@ def gateway() -> None:
 
 async def run_gateway(config: Config) -> None:
     """Run the gateway with all enabled channels."""
-    from sideclaw.agent.loop import AgentLoop
     from sideclaw.bus.messages import InboundMessage
-    from sideclaw.bus.queue import MessageBus
-    from sideclaw.providers.openrouter import OpenRouterProvider
-    from sideclaw.runtime.approval import configure as configure_approval
-    from sideclaw.session.manager import SessionManager
-
-    workspace = config.workspace_path
-    workspace.mkdir(parents=True, exist_ok=True)
-    (workspace / "sessions").mkdir(exist_ok=True)
-
-    bus = MessageBus()
-    provider = OpenRouterProvider(
-        api_key=config.providers.openrouter.api_key,
-        default_model=config.agent.model,
-        api_base=config.providers.openrouter.api_base,
-    )
-    session_manager = SessionManager(workspace / "sessions")
-    cron_service = CronService(
-        cron_store_path(workspace),
-        poll_interval_seconds=config.cron.poll_interval_seconds,
-    )
-    agent_loop = AgentLoop(
-        config=config,
-        bus=bus,
-        provider=provider,
-        session_manager=session_manager,
-        workspace=workspace,
-        cron_service=cron_service,
-    )
-    configure_approval(approval_config_for_runtime(config.approval, channel_prompt=True))
-    agent_loop.register_default_tools()
+    runtime = build_gateway_runtime(config)
+    bus = runtime.bus
+    session_manager = runtime.session_manager
+    cron_service = runtime.cron_service
+    agent_loop = runtime.agent_loop
 
     channels: list[Any] = []
     pending_tasks: set[asyncio.Task[None]] = set()

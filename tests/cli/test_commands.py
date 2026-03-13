@@ -55,15 +55,15 @@ def test_status_command_reports_provider_masking(tmp_path: Path) -> None:
 
 def test_approval_config_for_cli_forces_cli_prompt() -> None:
     approval = ApprovalConfig(mode=ApprovalMode.channel_prompt)
-    gateway_surface = import_module("sideclaw.cli.commands.gateway")
-    resolved = gateway_surface.approval_config_for_runtime(approval, channel_prompt=False)
+    app_cli = import_module("sideclaw.app.cli")
+    resolved = app_cli._approval_config_for_cli(approval)
     assert resolved.mode == ApprovalMode.cli_prompt
 
 
 def test_approval_config_for_gateway_forces_channel_prompt() -> None:
     approval = ApprovalConfig(mode=ApprovalMode.cli_prompt)
-    gateway_surface = import_module("sideclaw.cli.commands.gateway")
-    resolved = gateway_surface.approval_config_for_runtime(approval, channel_prompt=True)
+    app_gateway = import_module("sideclaw.app.gateway")
+    resolved = app_gateway._approval_config_for_gateway(approval)
     assert resolved.mode == ApprovalMode.channel_prompt
 
 
@@ -537,3 +537,105 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
 
     assert [msg.text for msg in channel.sent] == ["FIRST", "SECOND"]
     assert agent_loop.max_concurrent == 1
+
+
+async def test_run_agent_uses_app_runtime_for_single_message(tmp_path: Path) -> None:
+    agent_surface = import_module("sideclaw.cli.commands.agent")
+
+    class StubAgentLoop:
+        def __init__(self) -> None:
+            self.messages = []
+
+        async def process_message(self, msg):
+            self.messages.append(msg)
+
+            from sideclaw.bus.messages import OutboundMessage
+
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, text="hello back")
+
+    runtime = type(
+        "StubRuntime",
+        (),
+        {"agent_loop": StubAgentLoop(), "session_manager": object()},
+    )()
+    config = Config(
+        agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+        providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+    )
+
+    with patch.object(agent_surface, "build_cli_runtime", return_value=runtime) as build_runtime:
+        with patch.object(agent_surface, "set_clarify_callback", return_value="token") as set_cb:
+            with patch.object(agent_surface, "reset_clarify_callback") as reset_cb:
+                with patch.object(agent_surface, "render_agent_markdown", return_value="rendered"):
+                    with patch.object(agent_surface, "print_line") as print_line:
+                        await agent_surface.run_agent(config, "hello")
+
+    build_runtime.assert_called_once_with(config)
+    set_cb.assert_called_once()
+    reset_cb.assert_called_once_with("token")
+    assert len(runtime.agent_loop.messages) == 1
+    assert runtime.agent_loop.messages[0].text == "hello"
+    print_line.assert_called_once_with("rendered")
+
+
+async def test_run_gateway_uses_app_runtime_for_configured_channels(tmp_path: Path) -> None:
+    gateway_surface = import_module("sideclaw.cli.commands.gateway")
+
+    class StubBus:
+        async def consume_inbound(self):
+            raise asyncio.CancelledError
+
+    class StubCronService:
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
+
+        async def start(self, _callback) -> None:
+            self.started = True
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    class StubChannel:
+        channel_name = "telegram"
+
+        def __init__(self, bus, token, allow_from) -> None:
+            self.bus = bus
+            self.token = token
+            self.allow_from = allow_from
+            self.started = False
+            self.stopped = False
+
+        async def start(self) -> None:
+            self.started = True
+
+        async def stop(self) -> None:
+            self.stopped = True
+
+    runtime = type(
+        "StubRuntime",
+        (),
+        {
+            "bus": StubBus(),
+            "session_manager": object(),
+            "cron_service": StubCronService(),
+            "agent_loop": object(),
+        },
+    )()
+    config = Config(
+        agent=AgentConfig(workspace=str(tmp_path / "workspace")),
+        providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+    )
+    config.channels.telegram = TelegramConfig(token="123:abc", allow_from=["42"])
+
+    with patch.object(
+        gateway_surface,
+        "build_gateway_runtime",
+        return_value=runtime,
+    ) as build_runtime:
+        with patch("sideclaw.channels.telegram.TelegramChannel", StubChannel):
+            await gateway_surface.run_gateway(config)
+
+    build_runtime.assert_called_once_with(config)
+    assert runtime.cron_service.started is True
+    assert runtime.cron_service.stopped is True

@@ -26,6 +26,7 @@ Use targeted tests while iterating, for example `uv run pytest tests/tools/test_
 - Keep the hot-path prompt files concise. `AGENTS.md`, `SOUL.md`, and `docs/core-beliefs.md` are injected by default.
 - Preserve the split between transient session history and durable workspace memory. Do not collapse them into one store.
 - Keep channel-specific behavior out of the core agent loop when an adapter or runtime boundary already exists.
+- Keep host-specific dependency wiring in `sideclaw/app/`; command surfaces should not quietly become composition roots again.
 - Gate risky or mutating execution through the approval/runtime model instead of adding one-off prompts or bypasses.
 - Prefer `pathlib.Path`, typed Pydantic models, and existing helper utilities over ad hoc string/path handling.
 - Comments should explain non-obvious intent, not restate the code.
@@ -72,6 +73,7 @@ The main orchestration lives in `sideclaw/agent/loop.py`. If a change affects mu
 
 ```text
 sideclaw/
+├── app/           # shared runtime factory plus CLI/gateway composition hooks
 ├── agent/         # core orchestration, prompt building, skill loading, tool registry wiring
 ├── browser/       # Playwright-backed browser session management and snapshots
 ├── bus/           # async inbound/outbound queue abstractions
@@ -89,6 +91,7 @@ sideclaw/
 └── workspace/     # scaffold, canonical doc helpers, prompt-context routing
 
 tests/
+├── app/           # composition-layer coverage for shared runtime assembly
 ├── agent/         # loop and prompt-builder behavior
 ├── bus/           # queue semantics
 ├── channels/      # Telegram adapter behavior
@@ -109,6 +112,8 @@ tests/
 - `sideclaw/cli/main.py`: process entry point and Typer wiring for the CLI.
 - `sideclaw/cli/commands/`: command implementation modules for onboarding, status, agent, cron, and gateway behavior.
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
+- `sideclaw/app/factory.py`: shared runtime construction for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
+- `sideclaw/app/cli.py` and `sideclaw/app/gateway.py`: surface-specific composition hooks for approval semantics and future host divergence.
 - `sideclaw/agent/loop.py`: the core LLM/tool loop, session locking, pending approval resume path, and memory consolidation trigger.
 - `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.
@@ -145,14 +150,14 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
 
 1. Implement the adapter in `sideclaw/channels/`.
 2. Extend config models in `sideclaw/config/schema.py`.
-3. Wire startup and outbound routing in `sideclaw/cli/main.py` and the relevant `sideclaw/cli/commands/` module.
+3. Wire startup and outbound routing in `sideclaw/cli/main.py`, the relevant `sideclaw/cli/commands/` module, and `sideclaw/app/` if the new channel changes host composition.
 4. Add focused adapter tests plus at least one integration-path test if message flow changes.
 
 ### Adding a provider
 
 1. Implement the `LLMProvider` contract in `sideclaw/providers/`.
 2. Extend config loading/schema.
-3. Wire provider selection in CLI boot paths.
+3. Wire provider selection in `sideclaw/app/factory.py`.
 4. Verify tool-call parsing and error-path behavior in tests.
 
 ### Adding or changing workspace skills
@@ -167,7 +172,7 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
   - `uv run pytest tests/agent/test_prompt_builder.py tests/skills/test_loader.py tests/test_integration.py`
 - For tool changes, run the affected `tests/tools/test_*.py` modules and at least one agent-loop path if registration or approval behavior changed.
 - For CLI/config changes, run:
-  - `uv run pytest tests/cli/test_commands.py tests/cli/test_render.py tests/config/test_loader.py tests/config/test_schema.py`
+  - `uv run pytest tests/app/test_factory.py tests/app/test_cli.py tests/app/test_gateway.py tests/cli/test_commands.py tests/cli/test_render.py tests/config/test_loader.py tests/config/test_schema.py`
 - For session, memory, or cron changes, run the corresponding focused tests and then the full suite if the change crosses subsystem boundaries.
 
 Do not claim a behavior change is safe without running the tests that exercise that subsystem.

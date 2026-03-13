@@ -21,14 +21,16 @@ SideClaw is designed for fast iteration on practical assistants:
 - Real tool execution (files, shell, web, memory)
 - Easy local development with `uv`, `pytest`, and `typer`
 - A dedicated CLI render layer so command logic stays separate from presentation
+- An `app/` composition layer so CLI and gateway share runtime wiring without duplicating startup code
 
 ## Architecture At A Glance
 
 ```mermaid
 flowchart LR
     U[User] --> C[CLI or Telegram Channel]
-    C --> B[MessageBus.inbound]
-    B --> A[AgentLoop]
+    C --> APP[app/cli.py or app/gateway.py]
+    APP --> B[MessageBus.inbound]
+    APP --> A[AgentLoop]
     A --> P[LLM Provider<br/>OpenRouter via LiteLLM]
     A --> T[ToolRegistry<br/>filesystem, shell, web, memory]
     A --> S[SessionManager<br/>JSONL sessions]
@@ -46,6 +48,7 @@ See [AGENTS.md](./AGENTS.md) for contributor-facing guidance tailored to coding 
 ```text
 sideclaw/
   sideclaw/
+    app/           # shared runtime factory + per-surface composition hooks
     agent/         # core orchestration loop + context building
     bus/           # async inbound/outbound message queues
     channels/      # platform adapters (Telegram)
@@ -57,7 +60,7 @@ sideclaw/
     skills/        # built-in prompt skills
     cron/          # persisted scheduler service
     tools/         # tool base class + built-in tools
-    templates/     # bootstrap identity/soul prompt files
+    templates/     # scaffolded workspace prompt files
   tests/           # unit + integration tests
 ```
 
@@ -190,12 +193,18 @@ mutating commands. Gateway/channel usage is denied by default.
 
 ## Development
 
+Runtime assembly now lives under `sideclaw/app/`:
+
+- `factory.py`: shared object graph construction for the host process
+- `cli.py`: CLI-specific composition, including approval-mode adaptation
+- `gateway.py`: gateway-specific composition, including channel approval semantics
+
 CLI presentation code lives under `sideclaw/cli/render/`:
 
 - `console.py`: shared Rich console I/O helpers
 - `formatting.py`: pure formatting/renderable helpers reused by CLI commands
 
-That keeps `sideclaw/cli/commands/` focused on control flow, config loading, and runtime orchestration rather than inline Rich markup assembly.
+That keeps `sideclaw/cli/commands/` focused on control flow and config loading while `sideclaw/app/` owns runtime wiring and `sideclaw/cli/render/` owns presentation.
 
 Run tests:
 
