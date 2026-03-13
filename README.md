@@ -22,6 +22,7 @@ SideClaw is designed for fast iteration on practical assistants:
 - Easy local development with `uv`, `pytest`, and `typer`
 - A dedicated CLI render layer so command logic stays separate from presentation
 - An `app/` composition layer so CLI and gateway share runtime wiring without duplicating startup code
+- A `runtime/` boundary so surfaces call a stable run API instead of talking to transport-shaped loop methods directly
 
 ## Architecture At A Glance
 
@@ -29,14 +30,13 @@ SideClaw is designed for fast iteration on practical assistants:
 flowchart LR
     U[User] --> C[CLI or Telegram Channel]
     C --> APP[app/cli.py or app/gateway.py]
-    APP --> B[MessageBus.inbound]
-    APP --> A[AgentLoop]
+    APP --> R[RuntimeService<br/>RunRequest -> RunResult]
+    R --> A[AgentLoop]
     A --> P[LLM Provider<br/>OpenRouter via LiteLLM]
     A --> T[ToolRegistry<br/>filesystem, shell, web, memory]
     A --> S[SessionManager<br/>JSONL sessions]
     A --> M[MemoryStore<br/>MEMORY.md + HISTORY.md]
-    A --> BO[MessageBus.outbound]
-    BO --> C
+    R --> C
     C --> U
 ```
 
@@ -56,6 +56,7 @@ sideclaw/
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
     providers/     # LLM abstraction + OpenRouter implementation
+    runtime/       # run models, runtime service, approval policy, and transient run state
     session/       # JSONL-backed session persistence
     skills/        # built-in prompt skills
     cron/          # persisted scheduler service
@@ -116,6 +117,13 @@ The gateway runs continuously, receives inbound channel messages, and routes out
 
 Scheduled jobs are executed by the same gateway process, so recurring Telegram delivery works while
 `sideclaw gateway` is running.
+
+Both CLI and gateway now enter assistant execution through the same runtime boundary:
+
+- surfaces build a `RunRequest`
+- `RuntimeService` adapts that request into the current loop
+- the runtime returns a `RunResult`
+- surfaces translate the result into terminal or channel output
 
 Example:
 
@@ -198,6 +206,12 @@ Runtime assembly now lives under `sideclaw/app/`:
 - `factory.py`: shared object graph construction for the host process
 - `cli.py`: CLI-specific composition, including approval-mode adaptation
 - `gateway.py`: gateway-specific composition, including channel approval semantics
+
+Run-level execution lives under `sideclaw/runtime/`:
+
+- `models/`: typed shapes such as `RunRequest`, `RuntimeContext`, `RuntimeEvent`, `RuntimeOutput`, and `RunResult`
+- `service.py`: the stable facade surfaces call for `run(...)` and `resume_pending(...)`
+- `state.py`: transient in-memory run state for the current execution
 
 CLI presentation code lives under `sideclaw/cli/render/`:
 

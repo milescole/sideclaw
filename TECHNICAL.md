@@ -12,14 +12,22 @@ SideClaw is an async, message-driven assistant runtime with four primary concern
 - Persist conversation and memory state for continuity
 - Execute persisted cron jobs through the same agent and delivery pipeline
 
+The runtime now exposes an explicit run boundary:
+
+- surfaces create a semantic `RunRequest`
+- `RuntimeService` owns the public execution entrypoint
+- `AgentLoop` still performs the underlying LLM/tool orchestration
+- surfaces receive a `RunResult` instead of depending directly on transport-shaped loop returns
+
 ## 2. Core Components
 
 | Component | File(s) | Responsibility |
 | --- | --- | --- |
 | CLI entry points | `sideclaw/cli/main.py`, `sideclaw/cli/commands/*`, `sideclaw/cli/render/*` | Typer entrypoint, thin command surfaces, and shared CLI presentation helpers |
 | App composition layer | `sideclaw/app/factory.py`, `sideclaw/app/cli.py`, `sideclaw/app/gateway.py` | Shared runtime construction plus surface-specific approval/policy adaptation |
-| Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channels from agent logic |
-| Agent loop | `sideclaw/agent/loop.py` | Orchestrates LLM calls, tool execution, response publishing, memory consolidation |
+| Runtime boundary | `sideclaw/runtime/service.py`, `sideclaw/runtime/state.py`, `sideclaw/runtime/models/*` | Stable run API (`RunRequest`/`RunResult`), transient run state, and typed runtime models |
+| Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
+| Agent loop | `sideclaw/agent/loop.py` | Current LLM/tool orchestration engine used behind the runtime boundary |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
 | Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/openrouter.py` | LLM abstraction and OpenRouter implementation via LiteLLM |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools and registry for schema/export/dispatch |
@@ -35,7 +43,7 @@ sequenceDiagram
     participant User
     participant Channel
     participant App as app/cli.py or app/gateway.py
-    participant Bus as MessageBus
+    participant Runtime as RuntimeService
     participant Agent as AgentLoop
     participant LLM as OpenRouterProvider
     participant Tools as ToolRegistry
@@ -43,8 +51,8 @@ sequenceDiagram
 
     User->>Channel: Send message
     Channel->>App: invoke surface runtime
-    App->>Bus: publish_inbound(InboundMessage)
-    Bus->>Agent: consume_inbound()
+    App->>Runtime: run(RunRequest)
+    Runtime->>Agent: process_message(InboundMessage)
     Agent->>Session: get_or_create(channel:chat_id)
     Agent->>Agent: build system + history context
     Agent->>LLM: chat(messages, tools)
@@ -58,9 +66,9 @@ sequenceDiagram
         LLM-->>Agent: assistant content
     end
 
-    Agent->>Bus: publish_outbound(OutboundMessage)
     Agent->>Session: save(session)
-    Bus->>Channel: consume_outbound()
+    Runtime-->>App: RunResult
+    App->>Channel: send OutboundMessage
     Channel->>User: Send response
 ```
 
@@ -89,6 +97,18 @@ Message payload sent to the provider:
 - `system` prompt (composed context)
 - prior history from session (bounded and user-turn-aligned)
 - current `user` message
+
+## 4.1 Runtime Models
+
+The runtime boundary uses a few typed models to separate execution semantics from adapter DTOs:
+
+- `RunRequest`: one unit of runtime execution, usually one inbound user message, cron prompt, or approval reply
+- `RuntimeContext`: resolved run metadata such as run id, surface, conversation id, and session key
+- `RuntimeEvent`: typed progress/event payloads for future streaming and replay
+- `RuntimeOutput`: surfaced artifacts emitted by a run, currently text and later attachments/media
+- `RunResult`: final runtime status plus output text, outputs, and events
+
+Today `RuntimeService` still adapts `RunRequest` into the existing `InboundMessage`-driven `AgentLoop`, but the public boundary is now runtime-shaped rather than channel-shaped.
 
 ## 5. Data and Persistence Model
 
@@ -210,7 +230,7 @@ This keeps the CLI surface thin while preserving a dedicated place for future ga
 
 - CLI commands manage jobs directly.
 - The `cron` tool lets the agent create jobs for the current chat.
-- Cron executions are fed back into `AgentLoop` as synthetic inbound messages with `sender_id="cron"`.
+- Cron executions are turned into `RunRequest`s with `user_id="cron"` and routed through `RuntimeService`.
 - Outbound responses from scheduled jobs are routed through the same channel adapter used for live chat.
 - `CronTool` blocks nested scheduling during cron execution to avoid runaway self-scheduling loops.
 

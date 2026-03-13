@@ -1,6 +1,6 @@
 import json
 
-from sideclaw.runtime.models import ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequirement
 from sideclaw.tools.browser import BrowserTool
 
 

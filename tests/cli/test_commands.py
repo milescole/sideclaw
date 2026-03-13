@@ -18,7 +18,7 @@ from sideclaw.config.schema import (
     TelegramConfig,
 )
 from sideclaw.runtime.approval import check_approval, configure, set_pending
-from sideclaw.runtime.models import ApprovalRequest, ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequest, ApprovalRequirement
 from sideclaw.session.manager import SessionManager
 
 runner = CliRunner()
@@ -404,14 +404,20 @@ async def test_handle_message_new_resets_telegram_session(tmp_path: Path) -> Non
     session.messages.append({"role": "assistant", "content": "noted"})
     manager.save(session)
 
-    class StubAgentLoop:
-        async def process_message(self, _msg):  # pragma: no cover - should not be called
-            msg = "process_message should not be called for /new"
+    class StubRuntimeService:
+        async def run(self, _request):  # pragma: no cover - should not be called
+            msg = "run should not be called for /new"
             raise AssertionError(msg)
 
     msg = InboundMessage(channel="telegram", chat_id="123", sender_id="123", text="/new")
     gateway_surface = import_module("sideclaw.cli.commands.gateway")
-    await gateway_surface.handle_message(StubAgentLoop(), [], manager, asyncio.Semaphore(1), msg)
+    await gateway_surface.handle_message(
+        StubRuntimeService(),
+        [],
+        manager,
+        asyncio.Semaphore(1),
+        msg,
+    )
 
     reloaded = SessionManager(session_dir).get_or_create("telegram:123")
     assert reloaded.messages == []
@@ -428,13 +434,16 @@ async def test_handle_message_resolves_pending_approval(tmp_path: Path) -> None:
         async def send(self, msg):
             self.sent.append(msg)
 
-    class StubAgentLoop:
-        async def process_message(self, _msg):
-            msg = "process_message should not run for approval replies"
+    class StubRuntimeService:
+        async def run(self, _request):
+            msg = "run should not execute for approval replies"
             raise AssertionError(msg)
 
-        async def resume_pending_approval(self, _msg, _scope):
-            return "Approved."
+        async def resume_pending(self, _request, _scope):
+            class Result:
+                output_text = "Approved."
+
+            return Result()
 
     configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
     manager = SessionManager(tmp_path / "sessions")
@@ -460,7 +469,7 @@ async def test_handle_message_resolves_pending_approval(tmp_path: Path) -> None:
     gateway_surface = import_module("sideclaw.cli.commands.gateway")
     try:
         await gateway_surface.handle_message(
-            StubAgentLoop(), [channel], manager, asyncio.Semaphore(1), msg
+            StubRuntimeService(), [channel], manager, asyncio.Semaphore(1), msg
         )
     finally:
         configure(ApprovalConfig())
@@ -479,7 +488,7 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
         async def send(self, msg):
             self.sent.append(msg)
 
-    class StubAgentLoop:
+    class StubRuntimeService:
         def __init__(self) -> None:
             self.current = 0
             self.max_concurrent = 0
@@ -489,7 +498,7 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
             self.release_first = asyncio.Event()
             self.release_second = asyncio.Event()
 
-        async def process_message(self, msg):
+        async def run(self, request):
             self.total_calls += 1
             self.current += 1
             self.max_concurrent = max(self.max_concurrent, self.current)
@@ -503,12 +512,13 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
 
             self.current -= 1
 
-            from sideclaw.bus.messages import OutboundMessage
+            class Result:
+                output_text = request.input_text.upper()
 
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, text=msg.text.upper())
+            return Result()
 
     channel = StubChannel()
-    agent_loop = StubAgentLoop()
+    runtime_service = StubRuntimeService()
     manager = SessionManager(tmp_path / "sessions")
     semaphore = asyncio.Semaphore(1)
 
@@ -517,46 +527,47 @@ async def test_handle_message_respects_gateway_semaphore(tmp_path: Path) -> None
     gateway_surface = import_module("sideclaw.cli.commands.gateway")
 
     first_task = asyncio.create_task(
-        gateway_surface.handle_message(agent_loop, [channel], manager, semaphore, first)
+        gateway_surface.handle_message(runtime_service, [channel], manager, semaphore, first)
     )
-    await asyncio.wait_for(agent_loop.first_entered.wait(), timeout=1)
+    await asyncio.wait_for(runtime_service.first_entered.wait(), timeout=1)
 
     second_task = asyncio.create_task(
-        gateway_surface.handle_message(agent_loop, [channel], manager, semaphore, second)
+        gateway_surface.handle_message(runtime_service, [channel], manager, semaphore, second)
     )
     await asyncio.sleep(0.05)
 
-    assert agent_loop.total_calls == 1
-    assert agent_loop.max_concurrent == 1
+    assert runtime_service.total_calls == 1
+    assert runtime_service.max_concurrent == 1
 
-    agent_loop.release_first.set()
-    await asyncio.wait_for(agent_loop.second_entered.wait(), timeout=1)
-    agent_loop.release_second.set()
+    runtime_service.release_first.set()
+    await asyncio.wait_for(runtime_service.second_entered.wait(), timeout=1)
+    runtime_service.release_second.set()
 
     await asyncio.wait_for(asyncio.gather(first_task, second_task), timeout=1)
 
     assert [msg.text for msg in channel.sent] == ["FIRST", "SECOND"]
-    assert agent_loop.max_concurrent == 1
+    assert runtime_service.max_concurrent == 1
 
 
 async def test_run_agent_uses_app_runtime_for_single_message(tmp_path: Path) -> None:
     agent_surface = import_module("sideclaw.cli.commands.agent")
 
-    class StubAgentLoop:
+    class StubRuntimeService:
         def __init__(self) -> None:
-            self.messages = []
+            self.requests = []
 
-        async def process_message(self, msg):
-            self.messages.append(msg)
+        async def run(self, request):
+            self.requests.append(request)
 
-            from sideclaw.bus.messages import OutboundMessage
+            class Result:
+                output_text = "hello back"
 
-            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, text="hello back")
+            return Result()
 
     runtime = type(
         "StubRuntime",
         (),
-        {"agent_loop": StubAgentLoop(), "session_manager": object()},
+        {"runtime_service": StubRuntimeService(), "session_manager": object()},
     )()
     config = Config(
         agent=AgentConfig(workspace=str(tmp_path / "workspace")),
@@ -573,8 +584,8 @@ async def test_run_agent_uses_app_runtime_for_single_message(tmp_path: Path) -> 
     build_runtime.assert_called_once_with(config)
     set_cb.assert_called_once()
     reset_cb.assert_called_once_with("token")
-    assert len(runtime.agent_loop.messages) == 1
-    assert runtime.agent_loop.messages[0].text == "hello"
+    assert len(runtime.runtime_service.requests) == 1
+    assert runtime.runtime_service.requests[0].input_text == "hello"
     print_line.assert_called_once_with("rendered")
 
 
@@ -619,6 +630,7 @@ async def test_run_gateway_uses_app_runtime_for_configured_channels(tmp_path: Pa
             "bus": StubBus(),
             "session_manager": object(),
             "cron_service": StubCronService(),
+            "runtime_service": object(),
             "agent_loop": object(),
         },
     )()

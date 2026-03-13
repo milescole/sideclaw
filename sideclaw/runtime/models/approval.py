@@ -1,4 +1,4 @@
-"""Approval and execution data models."""
+"""Approval and tool-execution data models."""
 
 from dataclasses import dataclass, field
 from enum import StrEnum

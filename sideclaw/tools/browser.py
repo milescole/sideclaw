@@ -4,7 +4,7 @@ from typing import Any
 
 from sideclaw.browser import BrowserService
 from sideclaw.runtime.context import get_tool_runtime_context
-from sideclaw.runtime.models import ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequirement
 from sideclaw.tools.base import Tool
 
 READ_ONLY_ACTIONS = {

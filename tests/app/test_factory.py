@@ -22,6 +22,8 @@ def test_build_runtime_wires_common_dependencies(tmp_path: Path) -> None:
     assert runtime.agent_loop._bus is runtime.bus
     assert runtime.agent_loop._provider is runtime.provider
     assert runtime.agent_loop._session_manager is runtime.session_manager
+    assert runtime.runtime_service._agent_loop is runtime.agent_loop
+    assert runtime.runtime_service._session_manager is runtime.session_manager
 
 
 def test_importing_factory_does_not_eagerly_import_runtime_dependencies() -> None:

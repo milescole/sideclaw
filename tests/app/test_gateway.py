@@ -11,7 +11,7 @@ from sideclaw.config.schema import (
     ProvidersConfig,
 )
 from sideclaw.runtime.approval import check_approval, configure
-from sideclaw.runtime.models import ApprovalRequirement, ApprovalStatus
+from sideclaw.runtime.models.approval import ApprovalRequirement, ApprovalStatus
 
 
 def test_build_gateway_runtime_configures_channel_approval_and_registers_tools(tmp_path) -> None:

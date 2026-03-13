@@ -22,7 +22,7 @@ from sideclaw.config.schema import (
 )
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
 from sideclaw.runtime.approval import configure, get_pending
-from sideclaw.runtime.models import ApprovalScope
+from sideclaw.runtime.models.approval import ApprovalScope
 from sideclaw.session.manager import SessionManager
 from sideclaw.workspace import sync_workspace_templates
 

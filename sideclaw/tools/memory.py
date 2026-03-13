@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from sideclaw.runtime.models import ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequirement
 from sideclaw.tools.base import Tool, truncate_tool_output
 from sideclaw.workspace.docs import WorkspaceDocs
 

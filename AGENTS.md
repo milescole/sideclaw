@@ -1,6 +1,6 @@
 # SideClaw Development Guide
 
-**SideClaw** is a lightweight, message-driven AI assistant framework. The core loop builds prompt context from workspace docs, calls an LLM provider, executes a config-driven tool registry, and persists session and memory state for continuity across CLI, gateway, and scheduled runs.
+**SideClaw** is a lightweight, message-driven AI assistant framework. The current runtime boundary accepts run-level requests from CLI, gateway, and scheduled entrypoints, then delegates to the core loop for prompt building, LLM calls, tool execution, and session/memory persistence.
 
 ## Build, Test, and Run
 
@@ -43,31 +43,31 @@ Use targeted tests while iterating, for example `uv run pytest tests/tools/test_
 
 ## Architecture Principles
 
-- SideClaw is message-driven. Inbound channel messages become `InboundMessage` objects, flow through the agent loop, and produce `OutboundMessage` responses.
+- SideClaw is message-driven, but surfaces should prefer the runtime boundary over direct loop calls. CLI, gateway, and scheduled entrypoints should create `RunRequest` values and receive `RunResult` values.
 - Prompt assembly is a first-class subsystem, not a string concatenation detail. `sideclaw/agent/prompt_builder.py` and `sideclaw/workspace/context.py` decide what context enters the model.
 - Workspace docs are part of runtime behavior. Canonical files and routed docs influence model behavior, memory, and safety.
 - Tool registration is config-driven. Core tools are always present; browser, image, messaging, TTS, shell, web search, and cron are conditional.
 - Session storage and long-term memory serve different purposes:
   - sessions preserve turn-by-turn transcripts per `channel:chat_id`
   - memory/workspace docs preserve curated durable context
-- Approval is a runtime policy surface, not just UI. CLI and channel approval modes must remain behaviorally consistent.
+- Approval is a runtime policy surface, not just UI. CLI and channel approval modes must remain behaviorally consistent across `RuntimeService`, gateway handling, and direct loop resume paths.
 - Skills are prompt extensions selected by frontmatter and request matching. Changes to loading or ranking affect agent behavior broadly.
 
 ## Runtime Flow
 
 ```text
 channel/CLI input
-  -> message bus
+  -> runtime service
   -> agent loop
   -> prompt builder + workspace context + skill loading
   -> provider chat call
   -> optional tool execution loop
   -> session save + optional memory consolidation
-  -> outbound bus
+  -> run result
   -> channel adapter
 ```
 
-The main orchestration lives in `sideclaw/agent/loop.py`. If a change affects multiple steps in this flow, verify the full interaction, not just the local function.
+The current underlying orchestration still lives in `sideclaw/agent/loop.py`, but surfaces should route through `sideclaw/runtime/service.py`. If a change affects multiple steps in this flow, verify the full interaction, not just the local function.
 
 ## Project Structure
 
@@ -83,7 +83,7 @@ sideclaw/
 ├── cron/          # persisted scheduler service and due-job execution
 ├── memory/        # long-term memory store built on workspace markdown files
 ├── providers/     # LLM abstraction and OpenRouter implementation via LiteLLM
-├── runtime/       # approval state, runtime context, clarify/approval models
+├── runtime/       # approval policy, clarify flow, run models, runtime service, and transient run state
 ├── session/       # JSONL-backed per-chat session persistence and locking
 ├── skills/        # built-in skill prompts copied into workspaces and loaded by relevance
 ├── tools/         # tool interfaces and built-in tools
@@ -114,6 +114,9 @@ tests/
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
 - `sideclaw/app/factory.py`: shared runtime construction for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
 - `sideclaw/app/cli.py` and `sideclaw/app/gateway.py`: surface-specific composition hooks for approval semantics and future host divergence.
+- `sideclaw/runtime/service.py`: stable run boundary used by CLI and gateway surfaces; adapts `RunRequest`/`RunResult` to the current loop.
+- `sideclaw/runtime/state.py`: in-memory run-scoped state, events, outputs, and lifecycle phase tracking.
+- `sideclaw/runtime/models/`: typed run request/result/context/event/output shapes.
 - `sideclaw/agent/loop.py`: the core LLM/tool loop, session locking, pending approval resume path, and memory consolidation trigger.
 - `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.

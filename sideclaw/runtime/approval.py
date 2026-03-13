@@ -5,7 +5,7 @@ from dataclasses import asdict
 from uuid import uuid4
 
 from sideclaw.config.schema import ApprovalConfig, ApprovalMode
-from sideclaw.runtime.models import (
+from sideclaw.runtime.models.approval import (
     ApprovalDecision,
     ApprovalRequest,
     ApprovalRequirement,

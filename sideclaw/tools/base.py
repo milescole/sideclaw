@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from typing import Any
 
-from sideclaw.runtime.models import ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequirement
 
 DEFAULT_MAX_TOOL_OUTPUT_CHARS = 10_000
 

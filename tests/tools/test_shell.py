@@ -1,6 +1,6 @@
 import pytest
 
-from sideclaw.runtime.models import ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequirement
 from sideclaw.tools.shell import ExecTool
 
 

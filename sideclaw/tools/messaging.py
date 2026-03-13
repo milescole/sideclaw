@@ -7,7 +7,7 @@ from typing import Any
 
 from sideclaw.config.schema import Config
 from sideclaw.runtime.context import get_tool_runtime_context
-from sideclaw.runtime.models import ApprovalRequirement
+from sideclaw.runtime.models.approval import ApprovalRequirement
 from sideclaw.session.manager import SessionManager
 from sideclaw.tools.base import Tool
 

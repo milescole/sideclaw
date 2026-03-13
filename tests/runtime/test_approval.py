@@ -8,7 +8,7 @@ from sideclaw.runtime.approval import (
     get_pending,
     set_pending,
 )
-from sideclaw.runtime.models import (
+from sideclaw.runtime.models.approval import (
     ApprovalRequest,
     ApprovalRequirement,
     ApprovalScope,

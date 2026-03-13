@@ -1,4 +1,4 @@
-from sideclaw.runtime.models import (
+from sideclaw.runtime.models.approval import (
     ApprovalDecision,
     ApprovalRequest,
     ApprovalRequirement,

@@ -26,7 +26,14 @@ from sideclaw.runtime.context import (
     reset_tool_runtime_context,
     set_tool_runtime_context,
 )
-from sideclaw.runtime.models import ApprovalScope, ToolExecutionOutcome, ToolExecutionResult
+from sideclaw.runtime.models.approval import (
+    ApprovalScope,
+    ToolExecutionOutcome,
+    ToolExecutionResult,
+)
+from sideclaw.runtime.models.context import RuntimeContext
+from sideclaw.runtime.models.requests import RunRequest
+from sideclaw.runtime.models.results import RunResult, RunStatus
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
 from sideclaw.tools.registry import ToolRegistry
@@ -84,13 +91,14 @@ class AgentLoop:
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the agent loop."""
-        session_key = f"{msg.channel}:{msg.chat_id}"
+        runtime_context = self._runtime_context_for_message(msg)
+        session_key = runtime_context.session_key
         context_token = set_tool_runtime_context(
             ToolRuntimeContext(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                sender_id=msg.sender_id,
-                session_key=session_key,
+                channel=runtime_context.surface,
+                chat_id=runtime_context.conversation_id,
+                sender_id=runtime_context.user_id or "",
+                session_key=runtime_context.session_key,
             )
         )
         lock = self._session_manager.get_lock(session_key)
@@ -101,8 +109,8 @@ class AgentLoop:
                 messages = self._context.build_messages(
                     session.get_history(max_messages=self._session_history_limit()),
                     msg.text,
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
+                    channel=runtime_context.surface,
+                    chat_id=runtime_context.conversation_id,
                 )
 
                 session.messages.append({"role": "user", "content": msg.text})
@@ -114,7 +122,18 @@ class AgentLoop:
                 if unconsolidated >= self._config.agent.memory_window:
                     await self._consolidate_memory(session)
 
-                return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, text=text)
+                result = RunResult(
+                    run_id=runtime_context.run_id,
+                    status=RunStatus.completed,
+                    output_text=text,
+                    surface=runtime_context.surface,
+                    conversation_id=runtime_context.conversation_id,
+                )
+                return OutboundMessage(
+                    channel=result.surface or msg.channel,
+                    chat_id=result.conversation_id or msg.chat_id,
+                    text=result.output_text,
+                )
         finally:
             reset_tool_runtime_context(context_token)
 
@@ -124,13 +143,14 @@ class AgentLoop:
         scope: ApprovalScope | None,
     ) -> str:
         """Resume a previously paused approval-gated execution."""
-        session_key = f"{msg.channel}:{msg.chat_id}"
+        runtime_context = self._runtime_context_for_message(msg)
+        session_key = runtime_context.session_key
         context_token = set_tool_runtime_context(
             ToolRuntimeContext(
-                channel=msg.channel,
-                chat_id=msg.chat_id,
-                sender_id=msg.sender_id,
-                session_key=session_key,
+                channel=runtime_context.surface,
+                chat_id=runtime_context.conversation_id,
+                sender_id=runtime_context.user_id or "",
+                session_key=runtime_context.session_key,
             )
         )
         lock = self._session_manager.get_lock(session_key)
@@ -152,8 +172,8 @@ class AgentLoop:
                 clear_pending(session)
                 messages = self._build_messages_from_session(
                     session,
-                    channel=msg.channel,
-                    chat_id=msg.chat_id,
+                    channel=runtime_context.surface,
+                    chat_id=runtime_context.conversation_id,
                 )
 
                 approved_result = await self._registry.execute(
@@ -195,6 +215,17 @@ class AgentLoop:
                 return content
         finally:
             reset_tool_runtime_context(context_token)
+
+    @staticmethod
+    def _runtime_context_for_message(msg: InboundMessage) -> RuntimeContext:
+        """Convert a transport message into semantic runtime context."""
+        request = RunRequest(
+            input_text=msg.text,
+            surface=msg.channel,
+            conversation_id=msg.chat_id,
+            user_id=msg.sender_id,
+        )
+        return RuntimeContext.from_request(request)
 
     async def _run_provider_loop(
         self,

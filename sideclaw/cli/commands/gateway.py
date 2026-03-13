@@ -17,7 +17,8 @@ from sideclaw.cli.render.formatting import (
 )
 from sideclaw.config.loader import get_config_path, load_config
 from sideclaw.config.schema import Config
-from sideclaw.runtime.models import ApprovalScope
+from sideclaw.runtime.models.approval import ApprovalScope
+from sideclaw.runtime.models.requests import RunRequest
 
 GATEWAY_MAX_CONCURRENCY = 8
 
@@ -56,11 +57,13 @@ def gateway() -> None:
 
 async def run_gateway(config: Config) -> None:
     """Run the gateway with all enabled channels."""
-    from sideclaw.bus.messages import InboundMessage
+    from sideclaw.bus.messages import OutboundMessage
+
     runtime = build_gateway_runtime(config)
     bus = runtime.bus
     session_manager = runtime.session_manager
     cron_service = runtime.cron_service
+    runtime_service = runtime.runtime_service
     agent_loop = runtime.agent_loop
 
     channels: list[Any] = []
@@ -103,15 +106,22 @@ async def run_gateway(config: Config) -> None:
             token = cron_tool.set_cron_context(True)
 
         try:
-            response = await agent_loop.process_message(
-                InboundMessage(
-                    channel=job.channel,
-                    chat_id=job.chat_id,
-                    sender_id="cron",
-                    text=job.prompt,
+            result = await runtime_service.run(
+                RunRequest(
+                    input_text=job.prompt,
+                    surface=job.channel,
+                    conversation_id=job.chat_id,
+                    user_id="cron",
                 )
             )
-            await _route_outbound_message(channels, response)
+            await _route_outbound_message(
+                channels,
+                OutboundMessage(
+                    channel=job.channel,
+                    chat_id=job.chat_id,
+                    text=result.output_text,
+                ),
+            )
         finally:
             if isinstance(cron_tool, CronTool) and token is not None:
                 cron_tool.reset_cron_context(token)
@@ -125,7 +135,7 @@ async def run_gateway(config: Config) -> None:
             msg = await bus.consume_inbound()
             logger.info(f"[{msg.channel}:{msg.chat_id}] {msg.text[:50]}...")
             task = asyncio.create_task(
-                handle_message(agent_loop, channels, session_manager, semaphore, msg)
+                handle_message(runtime_service, channels, session_manager, semaphore, msg)
             )
             pending_tasks.add(task)
             task.add_done_callback(pending_tasks.discard)
@@ -142,7 +152,7 @@ async def run_gateway(config: Config) -> None:
 
 
 async def handle_message(
-    agent_loop: Any,
+    runtime_service: Any,
     channels: list[Any],
     session_manager: Any,
     semaphore: asyncio.Semaphore,
@@ -163,23 +173,55 @@ async def handle_message(
             if session.pending_approval is not None:
                 lowered = msg.text.strip().lower()
                 if lowered in {"y", "yes", "approve"}:
-                    response_text = await agent_loop.resume_pending_approval(
-                        msg, ApprovalScope.once
+                    result = await runtime_service.resume_pending(
+                        RunRequest(
+                            input_text=msg.text,
+                            surface=msg.channel,
+                            conversation_id=msg.chat_id,
+                            user_id=msg.sender_id,
+                        ),
+                        ApprovalScope.once,
                     )
                 elif lowered in {"s", "session"}:
-                    response_text = await agent_loop.resume_pending_approval(
-                        msg, ApprovalScope.session
+                    result = await runtime_service.resume_pending(
+                        RunRequest(
+                            input_text=msg.text,
+                            surface=msg.channel,
+                            conversation_id=msg.chat_id,
+                            user_id=msg.sender_id,
+                        ),
+                        ApprovalScope.session,
                     )
                 else:
-                    response_text = await agent_loop.resume_pending_approval(msg, None)
+                    result = await runtime_service.resume_pending(
+                        RunRequest(
+                            input_text=msg.text,
+                            surface=msg.channel,
+                            conversation_id=msg.chat_id,
+                            user_id=msg.sender_id,
+                        ),
+                        None,
+                    )
 
                 response = OutboundMessage(
                     channel=msg.channel,
                     chat_id=msg.chat_id,
-                    text=response_text,
+                    text=result.output_text,
                 )
             else:
-                response = await agent_loop.process_message(msg)
+                result = await runtime_service.run(
+                    RunRequest(
+                        input_text=msg.text,
+                        surface=msg.channel,
+                        conversation_id=msg.chat_id,
+                        user_id=msg.sender_id,
+                    )
+                )
+                response = OutboundMessage(
+                    channel=msg.channel,
+                    chat_id=msg.chat_id,
+                    text=result.output_text,
+                )
 
         await _route_outbound_message(channels, response)
     except (RuntimeError, OSError, ValueError, TimeoutError) as e:

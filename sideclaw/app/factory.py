@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from sideclaw.bus.queue import MessageBus
     from sideclaw.cron import CronService
     from sideclaw.providers.base import LLMProvider
+    from sideclaw.runtime.service import RuntimeService
     from sideclaw.session.manager import SessionManager
 
 
@@ -24,6 +25,7 @@ class AppRuntime:
     session_manager: "SessionManager"
     cron_service: "CronService"
     agent_loop: "AgentLoop"
+    runtime_service: "RuntimeService"
 
 
 def build_runtime(config: Config) -> AppRuntime:
@@ -32,6 +34,7 @@ def build_runtime(config: Config) -> AppRuntime:
     from sideclaw.bus.queue import MessageBus
     from sideclaw.cron import CronService, cron_store_path
     from sideclaw.providers.openrouter import OpenRouterProvider
+    from sideclaw.runtime.service import RuntimeService
     from sideclaw.session.manager import SessionManager
 
     provider_config = config.providers.openrouter
@@ -63,6 +66,7 @@ def build_runtime(config: Config) -> AppRuntime:
         workspace=workspace,
         cron_service=cron_service,
     )
+    runtime_service = RuntimeService(agent_loop=agent_loop, session_manager=session_manager)
     return AppRuntime(
         workspace=workspace,
         bus=bus,
@@ -70,4 +74,5 @@ def build_runtime(config: Config) -> AppRuntime:
         session_manager=session_manager,
         cron_service=cron_service,
         agent_loop=agent_loop,
+        runtime_service=runtime_service,
     )
