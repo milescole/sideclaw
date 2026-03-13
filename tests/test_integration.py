@@ -4,11 +4,11 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from sideclaw.agent.loop import AgentLoop
 from sideclaw.bus.messages import InboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
+from sideclaw.runtime.loop import RuntimeLoop
 from sideclaw.session.manager import SessionManager
 from sideclaw.workspace import sync_workspace_templates
 
@@ -39,7 +39,7 @@ async def test_full_text_conversation(workspace, config, bus):
     provider.get_default_model.return_value = "openai/gpt-4o-mini"
     provider.chat.return_value = LLMResponse(content="Hi! How can I help?")
 
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,
@@ -77,7 +77,7 @@ async def test_tool_use_flow(workspace, config, bus):
 
     provider.chat.side_effect = [tool_response, final_response]
 
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,
@@ -102,7 +102,7 @@ async def test_multi_turn_conversation(workspace, config, bus):
     ]
 
     session_manager = SessionManager(workspace / "sessions")
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,
@@ -131,7 +131,7 @@ async def test_agents_file_loaded(workspace, config, bus):
     provider.get_default_model.return_value = "openai/gpt-4o-mini"
     provider.chat.return_value = LLMResponse(content="I'm CodeBot!")
 
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,
@@ -164,7 +164,7 @@ async def test_routed_workspace_doc_loaded_from_current_request(workspace, confi
     provider.get_default_model.return_value = "openai/gpt-4o-mini"
     provider.chat.return_value = LLMResponse(content="Handled.")
 
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,

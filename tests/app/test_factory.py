@@ -28,10 +28,10 @@ def test_build_runtime_wires_common_dependencies(tmp_path: Path) -> None:
 
 def test_importing_factory_does_not_eagerly_import_runtime_dependencies() -> None:
     sys.modules.pop("sideclaw.app.factory", None)
-    sys.modules.pop("sideclaw.agent.loop", None)
+    sys.modules.pop("sideclaw.runtime.loop", None)
     sys.modules.pop("sideclaw.providers.openrouter", None)
 
     import_module("sideclaw.app.factory")
 
-    assert "sideclaw.agent.loop" not in sys.modules
+    assert "sideclaw.runtime.loop" not in sys.modules
     assert "sideclaw.providers.openrouter" not in sys.modules

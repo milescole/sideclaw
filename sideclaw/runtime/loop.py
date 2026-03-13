@@ -1,4 +1,4 @@
-"""Core agent loop: receive message, call LLM, execute tools, respond."""
+"""Runtime loop: receive message, call LLM, execute tools, respond."""
 
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -45,8 +45,8 @@ if TYPE_CHECKING:
     from sideclaw.cron.service import CronService
 
 
-class AgentLoop:
-    """The core agent: processes messages through LLM + tool loop."""
+class RuntimeLoop:
+    """The shared runtime orchestration loop for inbound requests."""
 
     def __init__(
         self,
@@ -90,7 +90,7 @@ class AgentLoop:
         )
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
-        """Process a single inbound message through the agent loop."""
+        """Process a single inbound message through the runtime loop."""
         runtime_context = self._runtime_context_for_message(msg)
         session_key = runtime_context.session_key
         context_token = set_tool_runtime_context(
@@ -416,7 +416,6 @@ class AgentLoop:
                 sections = self._parse_consolidated_memory(response.content)
                 if sections:
                     self._workspace_docs.update_long_term_sections(sections)
-                # Build history entry
                 entry_parts = [
                     msg["content"][:100]
                     for msg in old_messages

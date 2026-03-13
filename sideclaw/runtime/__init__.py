@@ -7,22 +7,25 @@ Modules:
     - approval: runtime approval policy and pending approval helpers
     - clarify: interactive clarification callback management
     - context: tool-execution contextvars
+    - loop: RuntimeLoop orchestration shell
     - models: typed runtime requests, results, events, outputs, and approvals
     - service: RuntimeService facade for `run(...)` and `resume_pending(...)`
     - state: RuntimeState and RunPhase for in-flight runs
 
 Example:
-    >>> from sideclaw.runtime import RuntimeService
+    >>> from sideclaw.runtime import RuntimeLoop, RuntimeService
 """
 
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from sideclaw.runtime.loop import RuntimeLoop
     from sideclaw.runtime.service import RuntimeService
     from sideclaw.runtime.state import RunPhase, RuntimeState
 
 __all__ = [
     "RunPhase",
+    "RuntimeLoop",
     "RuntimeService",
     "RuntimeState",
 ]
@@ -30,6 +33,10 @@ __all__ = [
 
 def __getattr__(name: str) -> object:
     """Load runtime exports lazily to avoid import cycles."""
+    if name == "RuntimeLoop":
+        from sideclaw.runtime.loop import RuntimeLoop
+
+        return RuntimeLoop
     if name == "RuntimeService":
         from sideclaw.runtime.service import RuntimeService
 

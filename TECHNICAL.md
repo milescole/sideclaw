@@ -16,7 +16,7 @@ The runtime now exposes an explicit run boundary:
 
 - surfaces create a semantic `RunRequest`
 - `RuntimeService` owns the public execution entrypoint
-- `AgentLoop` still performs the underlying LLM/tool orchestration
+- `RuntimeLoop` performs the underlying LLM/tool orchestration
 - surfaces receive a `RunResult` instead of depending directly on transport-shaped loop returns
 
 ## 2. Core Components
@@ -27,7 +27,7 @@ The runtime now exposes an explicit run boundary:
 | App composition layer | `sideclaw/app/factory.py`, `sideclaw/app/cli.py`, `sideclaw/app/gateway.py` | Shared runtime construction plus surface-specific approval/policy adaptation |
 | Runtime boundary | `sideclaw/runtime/service.py`, `sideclaw/runtime/state.py`, `sideclaw/runtime/models/*` | Stable run API (`RunRequest`/`RunResult`), transient run state, and typed runtime models |
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
-| Agent loop | `sideclaw/agent/loop.py` | Current LLM/tool orchestration engine used behind the runtime boundary |
+| Runtime loop | `sideclaw/runtime/loop.py` | Current LLM/tool orchestration engine used behind the runtime boundary |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
 | Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/openrouter.py` | LLM abstraction and OpenRouter implementation via LiteLLM |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools and registry for schema/export/dispatch |
@@ -44,7 +44,7 @@ sequenceDiagram
     participant Channel
     participant App as app/cli.py or app/gateway.py
     participant Runtime as RuntimeService
-    participant Agent as AgentLoop
+    participant Agent as RuntimeLoop
     participant LLM as OpenRouterProvider
     participant Tools as ToolRegistry
     participant Session as SessionManager
@@ -74,7 +74,7 @@ sequenceDiagram
 
 ### Loop guard
 
-`MAX_TOOL_ITERATIONS = 20` in `sideclaw/agent/loop.py` bounds tool recursion and prevents infinite call loops.
+`MAX_TOOL_ITERATIONS = 20` in `sideclaw/runtime/loop.py` bounds tool recursion and prevents infinite call loops.
 
 ## 4. Prompt and Context Assembly
 
@@ -108,7 +108,7 @@ The runtime boundary uses a few typed models to separate execution semantics fro
 - `RuntimeOutput`: surfaced artifacts emitted by a run, currently text and later attachments/media
 - `RunResult`: final runtime status plus output text, outputs, and events
 
-Today `RuntimeService` still adapts `RunRequest` into the existing `InboundMessage`-driven `AgentLoop`, but the public boundary is now runtime-shaped rather than channel-shaped.
+Today `RuntimeService` adapts `RunRequest` into the existing `InboundMessage`-driven `RuntimeLoop`, but the public boundary is runtime-shaped rather than channel-shaped.
 
 ## 5. Data and Persistence Model
 
@@ -279,7 +279,7 @@ uv run pytest
 ### Add a new tool
 
 1. Implement `Tool` subclass in `sideclaw/tools/`
-2. Register it in `AgentLoop.register_default_tools()`
+2. Register it in `RuntimeLoop.register_default_tools()`
 3. Add tests under `tests/tools/`
 
 ### Add a new skill

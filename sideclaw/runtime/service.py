@@ -1,7 +1,7 @@
 """Runtime service facade."""
 
-from sideclaw.agent.loop import AgentLoop
 from sideclaw.bus.messages import InboundMessage
+from sideclaw.runtime.loop import RuntimeLoop
 from sideclaw.runtime.models.approval import ApprovalScope
 from sideclaw.runtime.models.context import RuntimeContext
 from sideclaw.runtime.models.events import RuntimeEvent, RuntimeEventKind
@@ -13,9 +13,9 @@ from sideclaw.session.manager import SessionManager
 
 
 class RuntimeService:
-    """Thin public facade over the current agent loop runtime."""
+    """Thin public facade over the current runtime loop."""
 
-    def __init__(self, *, agent_loop: AgentLoop, session_manager: SessionManager) -> None:
+    def __init__(self, *, agent_loop: RuntimeLoop, session_manager: SessionManager) -> None:
         self._agent_loop = agent_loop
         self._session_manager = session_manager
 

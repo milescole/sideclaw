@@ -1,6 +1,6 @@
 # SideClaw Development Guide
 
-**SideClaw** is a lightweight, message-driven AI assistant framework. The current runtime boundary accepts run-level requests from CLI, gateway, and scheduled entrypoints, then delegates to the core loop for prompt building, LLM calls, tool execution, and session/memory persistence.
+**SideClaw** is a lightweight, message-driven AI assistant framework. The current runtime boundary accepts run-level requests from CLI, gateway, and scheduled entrypoints, then delegates to the runtime loop for prompt building, LLM calls, tool execution, and session/memory persistence.
 
 ## Build, Test, and Run
 
@@ -58,7 +58,7 @@ Use targeted tests while iterating, for example `uv run pytest tests/tools/test_
 ```text
 channel/CLI input
   -> runtime service
-  -> agent loop
+  -> runtime loop
   -> prompt builder + workspace context + skill loading
   -> provider chat call
   -> optional tool execution loop
@@ -67,14 +67,14 @@ channel/CLI input
   -> channel adapter
 ```
 
-The current underlying orchestration still lives in `sideclaw/agent/loop.py`, but surfaces should route through `sideclaw/runtime/service.py`. If a change affects multiple steps in this flow, verify the full interaction, not just the local function.
+The underlying orchestration now lives in `sideclaw/runtime/loop.py`, and surfaces should route through `sideclaw/runtime/service.py`. If a change affects multiple steps in this flow, verify the full interaction, not just the local function.
 
 ## Project Structure
 
 ```text
 sideclaw/
 ├── app/           # shared runtime factory plus CLI/gateway composition hooks
-├── agent/         # core orchestration, prompt building, skill loading, tool registry wiring
+├── agent/         # prompt building, skill loading, and model-facing tool wiring
 ├── browser/       # Playwright-backed browser session management and snapshots
 ├── bus/           # async inbound/outbound queue abstractions
 ├── channels/      # channel adapters; Telegram is the current external gateway
@@ -114,10 +114,10 @@ tests/
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
 - `sideclaw/app/factory.py`: shared runtime construction for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
 - `sideclaw/app/cli.py` and `sideclaw/app/gateway.py`: surface-specific composition hooks for approval semantics and future host divergence.
-- `sideclaw/runtime/service.py`: stable run boundary used by CLI and gateway surfaces; adapts `RunRequest`/`RunResult` to the current loop.
+- `sideclaw/runtime/service.py`: stable run boundary used by CLI and gateway surfaces; adapts `RunRequest`/`RunResult` to the runtime loop.
 - `sideclaw/runtime/state.py`: in-memory run-scoped state, events, outputs, and lifecycle phase tracking.
+- `sideclaw/runtime/loop.py`: the shared LLM/tool orchestration loop, session locking, pending approval resume path, and memory consolidation trigger.
 - `sideclaw/runtime/models/`: typed run request/result/context/event/output shapes.
-- `sideclaw/agent/loop.py`: the core LLM/tool loop, session locking, pending approval resume path, and memory consolidation trigger.
 - `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.
 - `sideclaw/agent/prompt_builder.py`: system prompt assembly, runtime metadata injection, and context-budget trimming.

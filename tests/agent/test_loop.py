@@ -3,7 +3,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from sideclaw.agent.loop import AgentLoop
 from sideclaw.bus.messages import InboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import (
@@ -22,6 +21,7 @@ from sideclaw.config.schema import (
 )
 from sideclaw.providers.base import LLMResponse, ToolCallRequest
 from sideclaw.runtime.approval import configure, get_pending
+from sideclaw.runtime.loop import RuntimeLoop
 from sideclaw.runtime.models.approval import ApprovalScope
 from sideclaw.session.manager import SessionManager
 from sideclaw.workspace import sync_workspace_templates
@@ -56,7 +56,7 @@ def mock_provider():
 
 @pytest.fixture
 def agent(config, bus, mock_provider, workspace):
-    return AgentLoop(
+    return RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -116,7 +116,7 @@ async def test_process_message_respects_keep_recent_messages(config, bus, worksp
     provider = AsyncMock()
     provider.get_default_model.return_value = "openai/gpt-4o-mini"
     provider.chat.return_value = LLMResponse(content="Hello!")
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,
@@ -148,7 +148,7 @@ def test_build_messages_from_session_respects_keep_recent_messages(
     config, bus, mock_provider, workspace
 ):
     config.memory = MemoryConfig(keep_recent_messages=2)
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -193,7 +193,7 @@ async def test_max_tool_iterations(agent, bus, mock_provider):
 
 
 def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provider, workspace):
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -216,7 +216,7 @@ def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provi
 
 def test_register_default_tools_includes_exec_when_enabled(config, bus, mock_provider, workspace):
     config.tools = ToolsConfig(exec_enabled=True)
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -239,7 +239,7 @@ def test_register_default_tools_includes_web_search_when_configured(
         web_search_provider=WebSearchProvider.brave,
         web_search_api_key="brave_test_key",
     )
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -266,7 +266,7 @@ def test_register_default_tools_includes_browser_when_enabled(
 
     monkeypatch.setattr(BrowserService, "requirements_met", requirements_met)
     config.tools = ToolsConfig(browser_enabled=True)
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -289,7 +289,7 @@ def test_register_default_tools_includes_image_when_configured(
         fal_api_key="fal_test_key",
         fal_model="fal-ai/flux-pro/v1.1",
     )
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -311,7 +311,7 @@ def test_register_default_tools_includes_send_message_when_telegram_configured(
     config.channels = ChannelsConfig(
         telegram=TelegramConfig(token="123:telegram-token", allow_from=["*"]),
     )
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -331,7 +331,7 @@ def test_register_default_tools_includes_tts_when_enabled(
     workspace,
 ):
     config.tools = ToolsConfig(tts=TTSConfig(enabled=True, provider="edge"))
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=mock_provider,
@@ -556,7 +556,7 @@ class BlockingProvider:
 
 async def test_process_message_serializes_same_session(config, bus, workspace):
     provider = BlockingProvider()
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,
@@ -586,7 +586,7 @@ async def test_process_message_serializes_same_session(config, bus, workspace):
 
 async def test_process_message_allows_parallel_different_sessions(config, bus, workspace):
     provider = BlockingProvider(release_after_calls=2)
-    agent = AgentLoop(
+    agent = RuntimeLoop(
         config=config,
         bus=bus,
         provider=provider,

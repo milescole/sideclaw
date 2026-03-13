@@ -31,7 +31,7 @@ flowchart LR
     U[User] --> C[CLI or Telegram Channel]
     C --> APP[app/cli.py or app/gateway.py]
     APP --> R[RuntimeService<br/>RunRequest -> RunResult]
-    R --> A[AgentLoop]
+    R --> A[RuntimeLoop]
     A --> P[LLM Provider<br/>OpenRouter via LiteLLM]
     A --> T[ToolRegistry<br/>filesystem, shell, web, memory]
     A --> S[SessionManager<br/>JSONL sessions]
@@ -49,14 +49,14 @@ See [AGENTS.md](./AGENTS.md) for contributor-facing guidance tailored to coding 
 sideclaw/
   sideclaw/
     app/           # shared runtime factory + per-surface composition hooks
-    agent/         # core orchestration loop + context building
+    agent/         # prompt building + skills/tool wiring
     bus/           # async inbound/outbound message queues
     channels/      # platform adapters (Telegram)
     cli/           # Typer entrypoint, command surfaces, and shared CLI render helpers
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
     providers/     # LLM abstraction + OpenRouter implementation
-    runtime/       # run models, runtime service, approval policy, and transient run state
+    runtime/       # runtime loop, run models, runtime service, approval policy, and transient run state
     session/       # JSONL-backed session persistence
     skills/        # built-in prompt skills
     cron/          # persisted scheduler service
@@ -121,7 +121,7 @@ Scheduled jobs are executed by the same gateway process, so recurring Telegram d
 Both CLI and gateway now enter assistant execution through the same runtime boundary:
 
 - surfaces build a `RunRequest`
-- `RuntimeService` adapts that request into the current loop
+- `RuntimeService` adapts that request into the `RuntimeLoop`
 - the runtime returns a `RunResult`
 - surfaces translate the result into terminal or channel output
 
@@ -209,6 +209,7 @@ Runtime assembly now lives under `sideclaw/app/`:
 
 Run-level execution lives under `sideclaw/runtime/`:
 
+- `loop.py`: the shared `RuntimeLoop` orchestration shell
 - `models/`: typed shapes such as `RunRequest`, `RuntimeContext`, `RuntimeEvent`, `RuntimeOutput`, and `RunResult`
 - `service.py`: the stable facade surfaces call for `run(...)` and `resume_pending(...)`
 - `state.py`: transient in-memory run state for the current execution
