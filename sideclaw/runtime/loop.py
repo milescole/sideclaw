@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from sideclaw.agent.prompt_builder import PromptBuilder
-from sideclaw.agent.tools import build_default_tool_registry
 from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
@@ -40,7 +39,7 @@ from sideclaw.runtime.models.approval import (
 from sideclaw.runtime.models.results import RunResult, RunStatus
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
-from sideclaw.tools.registry import ToolRegistry
+from sideclaw.tools.registry import ToolRegistry, build_default_tool_registry
 from sideclaw.workspace.docs import WorkspaceDocs
 
 MAX_TOOL_ITERATIONS = 20

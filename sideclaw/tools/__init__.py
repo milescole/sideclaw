@@ -26,10 +26,11 @@ Example:
 """
 
 from sideclaw.tools.base import Tool, truncate_tool_output
-from sideclaw.tools.registry import ToolRegistry
+from sideclaw.tools.registry import ToolRegistry, build_default_tool_registry
 
 __all__ = [
     "Tool",
     "ToolRegistry",
+    "build_default_tool_registry",
     "truncate_tool_output",
 ]

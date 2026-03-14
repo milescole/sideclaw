@@ -49,7 +49,7 @@ See [AGENTS.md](./AGENTS.md) for contributor-facing guidance tailored to coding 
 sideclaw/
   sideclaw/
     app/           # shared runtime factory + per-surface composition hooks
-    agent/         # prompt building + skills/tool wiring
+    agent/         # prompt building + skills
     bus/           # async inbound/outbound message queues
     channels/      # platform adapters (Telegram)
     cli/           # Typer entrypoint, command surfaces, and shared CLI render helpers
@@ -60,7 +60,7 @@ sideclaw/
     session/       # JSONL-backed session persistence
     skills/        # built-in prompt skills
     cron/          # persisted scheduler service
-    tools/         # tool base class + built-in tools
+    tools/         # tool base class, registry, construction, and built-in tools
     templates/     # scaffolded workspace prompt files
   tests/           # unit + integration tests
 ```

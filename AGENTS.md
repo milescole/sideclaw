@@ -75,7 +75,7 @@ The underlying orchestration now lives in `sideclaw/runtime/loop.py`, and surfac
 ```text
 sideclaw/
 ├── app/           # shared runtime factory plus CLI/gateway composition hooks
-├── agent/         # prompt building, skill loading, and model-facing tool wiring
+├── agent/         # prompt building and skill loading
 ├── browser/       # Playwright-backed browser session management and snapshots
 ├── bus/           # async inbound/outbound queue abstractions
 ├── channels/      # channel adapters; Telegram is the current external gateway
@@ -87,7 +87,7 @@ sideclaw/
 ├── runtime/       # approval policy, clarify flow, run models, runtime service, and transient run state
 ├── session/       # JSONL-backed per-chat session persistence and locking
 ├── skills/        # built-in skill prompts copied into workspaces and loaded by relevance
-├── tools/         # tool interfaces and built-in tools
+├── tools/         # tool interfaces, registry, construction, and built-in tools
 ├── utils/         # shared file and redaction helpers
 └── workspace/     # scaffold, canonical doc helpers, prompt-context routing
 
@@ -120,14 +120,14 @@ tests/
 - `sideclaw/runtime/loop.py`: the shared orchestration shell for session locking, pending approval resume, and execution-module coordination.
 - `sideclaw/runtime/execution/`: internal execution helpers for prepare, LLM driver, tool runner, persistence, and output shaping.
 - `sideclaw/runtime/models/`: typed run request/result/context/event/output shapes.
-- `sideclaw/agent/tools.py`: the canonical place for default tool registration. Add new tools here instead of scattering registration across entry points.
+- `sideclaw/tools/registry.py`: tool contract, execution boundary, and default tool registration via `build_default_tool_registry()`.
 - `sideclaw/agent/skills.py`: skill discovery, workspace override precedence, frontmatter parsing, and relevance ranking.
 - `sideclaw/agent/prompt_builder.py`: system prompt assembly, runtime metadata injection, and context-budget trimming.
 - `sideclaw/workspace/context.py` and `sideclaw/workspace/docs.py`: canonical workspace document routing, reading, search, and controlled writes.
 - `sideclaw/session/manager.py`: per-session persistence and lock ownership. Concurrency changes should be reviewed carefully.
 - `sideclaw/memory/store.py`: long-term summary and history handling.
 - `sideclaw/runtime/approval.py`: centralized approval policy, pending approvals, CLI prompts, and session-scope approvals.
-- `sideclaw/tools/base.py` and `sideclaw/tools/registry.py`: tool contract and execution boundary.
+- `sideclaw/tools/base.py`: tool base class and shared helpers.
 
 ## Prompt and Workspace Model
 
@@ -148,7 +148,7 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
 ### Adding a tool
 
 1. Implement the tool in `sideclaw/tools/`.
-2. Register it in `sideclaw/agent/tools.py` in the right conditional bucket.
+2. Register it in `build_default_tool_registry()` in `sideclaw/tools/registry.py`.
 3. Add or extend tests in `tests/tools/` and any agent-loop coverage needed for end-to-end behavior.
 
 ### Adding a channel

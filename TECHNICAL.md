@@ -30,7 +30,7 @@ The runtime now exposes an explicit run boundary:
 | Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
 | Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/openrouter.py` | LLM abstraction and OpenRouter implementation via LiteLLM |
-| Tool runtime | `sideclaw/tools/*` | Built-in tools and registry for schema/export/dispatch |
+| Tool runtime | `sideclaw/tools/*` | Built-in tools, registry, and construction via `build_default_tool_registry()` |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
 | Channel adapters | `sideclaw/channels/*` | Platform-specific I/O (Telegram currently) |
@@ -163,7 +163,7 @@ All tools implement `Tool`:
 - Dispatches calls by name
 - Catches tool exceptions at boundary and returns error strings
 
-Default tools are registered during app composition, currently by `build_cli_runtime()` and `build_gateway_runtime()`:
+Default tools are registered by `build_default_tool_registry()` in `sideclaw/tools/registry.py`:
 
 - Filesystem: `read_file`, `write_file`, `edit_file`, `list_dir`
 - Execution: `exec`
@@ -282,7 +282,7 @@ uv run pytest
 ### Add a new tool
 
 1. Implement `Tool` subclass in `sideclaw/tools/`
-2. Register it in `RuntimeLoop.register_default_tools()`
+2. Register it in `build_default_tool_registry()` in `sideclaw/tools/registry.py`
 3. Add tests under `tests/tools/`
 
 ### Add a new skill
