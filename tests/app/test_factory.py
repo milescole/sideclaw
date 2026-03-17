@@ -9,6 +9,7 @@ from sideclaw.config.schema import (
     AgentConfig,
     AnthropicConfig,
     Config,
+    OllamaConfig,
     OpenAIConfig,
     OpenRouterConfig,
     ProvidersConfig,
@@ -62,6 +63,13 @@ def test_detect_provider_openai_models() -> None:
     assert _detect_provider("o1-preview") == "openai"
     assert _detect_provider("o3-mini") == "openai"
     assert _detect_provider("o4-mini") == "openai"
+
+
+def test_detect_provider_ollama_model() -> None:
+    from sideclaw.app.factory import _detect_provider
+
+    assert _detect_provider("ollama/llama3.2") == "ollama"
+    assert _detect_provider("ollama/mistral") == "ollama"
 
 
 def test_detect_provider_defaults_to_openrouter() -> None:
@@ -150,6 +158,46 @@ def test_build_provider_openai_missing_config(tmp_path: Path) -> None:
         providers=ProvidersConfig(),
     )
     with pytest.raises(ValueError, match="OpenAI provider requires"):
+        _build_provider(config)
+
+
+@patch("sideclaw.providers.ollama.openai")
+def test_build_provider_auto_ollama(mock_sdk, tmp_path: Path) -> None:
+    mock_sdk.AsyncOpenAI.return_value = object()
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.ollama import OllamaProvider
+
+    config = Config(
+        agent=AgentConfig(model="ollama/llama3.2", workspace=str(tmp_path)),
+        providers=ProvidersConfig(ollama=OllamaConfig()),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, OllamaProvider)
+    assert provider.get_default_model() == "llama3.2"
+
+
+@patch("sideclaw.providers.ollama.openai")
+def test_build_provider_explicit_ollama(mock_sdk, tmp_path: Path) -> None:
+    mock_sdk.AsyncOpenAI.return_value = object()
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.ollama import OllamaProvider
+
+    config = Config(
+        agent=AgentConfig(model="ollama/mistral", provider="ollama", workspace=str(tmp_path)),
+        providers=ProvidersConfig(ollama=OllamaConfig()),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, OllamaProvider)
+
+
+def test_build_provider_ollama_missing_config(tmp_path: Path) -> None:
+    from sideclaw.app.factory import _build_provider
+
+    config = Config(
+        agent=AgentConfig(model="ollama/llama3.2", workspace=str(tmp_path)),
+        providers=ProvidersConfig(),
+    )
+    with pytest.raises(ValueError, match="Ollama provider requires"):
         _build_provider(config)
 
 

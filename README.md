@@ -32,7 +32,7 @@ flowchart LR
     C --> APP[app/cli.py or app/gateway.py]
     APP --> R[RuntimeService<br/>RunRequest -> RunResult]
     R --> A[RuntimeLoop]
-    A --> P[LLM Provider<br/>Anthropic, OpenAI, OpenRouter via LiteLLM]
+    A --> P[LLM Provider<br/>Anthropic, OpenAI, Ollama, OpenRouter via LiteLLM]
     A --> T[ToolRegistry<br/>filesystem, shell, web, memory]
     A --> S[SessionManager<br/>JSONL sessions]
     A --> M[MemoryStore<br/>MEMORY.md + HISTORY.md]
@@ -55,7 +55,7 @@ sideclaw/
     cli/           # Typer entrypoint, command surfaces, and shared CLI render helpers
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
-    providers/     # LLM abstraction + Anthropic, OpenAI, and OpenRouter implementations
+    providers/     # LLM abstraction + Anthropic, OpenAI, Ollama, and OpenRouter implementations
     runtime/       # runtime loop, run models, runtime service, approval policy, and transient run state
     session/       # JSONL-backed session persistence
     skills/        # built-in prompt skills
@@ -70,6 +70,7 @@ sideclaw/
 - Python `>=3.13`
 - [`uv`](https://docs.astral.sh/uv/) for dependency and environment management
 - Anthropic API key **or** OpenRouter API key for live model calls
+- Optional: [Ollama](https://ollama.ai/) for free local model inference
 - Optional: Telegram bot token for gateway mode
 - Optional: `playwright` browser install for browser automation (`uv run playwright install`)
 
@@ -159,9 +160,10 @@ Default config path:
 
 Core configuration sections:
 
-- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openai`/`openrouter`)
+- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openai`/`ollama`/`openrouter`)
 - `providers.anthropic`: API key (for direct Anthropic access)
 - `providers.openai`: API key and optional base URL (for direct OpenAI access)
+- `providers.ollama`: optional base URL (for local Ollama inference, no API key needed)
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
 - `tools`: browser enablement, fal.ai image key/model/upscaler settings, shell exec, text-to-speech settings, web search provider/key, and other tool-specific flags

@@ -26,12 +26,19 @@ class OpenAIConfig(BaseModel):
     api_base: str = "https://api.openai.com/v1"
 
 
+class OllamaConfig(BaseModel):
+    """Ollama provider configuration."""
+
+    api_base: str = "http://localhost:11434/v1"
+
+
 class ProvidersConfig(BaseModel):
     """LLM provider configurations."""
 
     openrouter: OpenRouterConfig | None = None
     anthropic: AnthropicConfig | None = None
     openai: OpenAIConfig | None = None
+    ollama: OllamaConfig | None = None
 
 
 class AgentConfig(BaseModel):

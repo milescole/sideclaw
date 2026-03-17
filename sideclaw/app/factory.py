@@ -66,6 +66,16 @@ def _build_provider(config: Config) -> "LLMProvider":
             raise ValueError(msg)
         return OpenAIProvider(api_key=cfg.api_key, default_model=model, api_base=cfg.api_base)
 
+    if provider_name == "ollama":
+        from sideclaw.providers.ollama import OllamaProvider
+
+        cfg = config.providers.ollama
+        if cfg is None:
+            msg = "Ollama provider requires providers.ollama config"
+            raise ValueError(msg)
+        resolved = model.removeprefix("ollama/")
+        return OllamaProvider(default_model=resolved, api_base=cfg.api_base)
+
     if provider_name == "openrouter":
         from sideclaw.providers.openrouter import OpenRouterProvider
 

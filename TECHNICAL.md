@@ -29,7 +29,7 @@ The runtime now exposes an explicit run boundary:
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
 | Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
-| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/openrouter.py` | LLM abstraction with Anthropic, OpenAI, and OpenRouter implementations |
+| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/ollama.py`, `sideclaw/providers/openrouter.py` | LLM abstraction with Anthropic, OpenAI, Ollama, and OpenRouter implementations |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools, registry, and construction via `build_default_tool_registry()` |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
@@ -193,6 +193,8 @@ Schema root: `Config` in `sideclaw/config/schema.py`
 - `providers.openai`
   - `api_key` (required when using OpenAI models directly)
   - `api_base` default: `https://api.openai.com/v1`
+- `providers.ollama`
+  - `api_base` default: `http://localhost:11434/v1`
 - `providers.openrouter`
   - `api_key` (required when using OpenRouter)
   - `api_base` default: `https://openrouter.ai/api/v1`
@@ -250,9 +252,10 @@ Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py
 
 - `claude*` → Anthropic
 - `gpt-*`, `o1-*`, `o3-*`, `o4-*` → OpenAI
+- `ollama/*` → Ollama
 - Unrecognized / prefixed models → OpenRouter (fallback)
 
-Explicit values (`"anthropic"`, `"openai"`, `"openrouter"`) bypass auto-detection.
+Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass auto-detection.
 
 ### AnthropicProvider
 
@@ -269,6 +272,14 @@ Explicit values (`"anthropic"`, `"openai"`, `"openrouter"`) bypass auto-detectio
 - Messages pass through in native OpenAI format with key sanitization
 - Tool definitions pass through as-is (OpenAI native format)
 - Supports custom `api_base` for compatible endpoints
+- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+
+### OllamaProvider
+
+- Reuses the `openai` SDK against Ollama's OpenAI-compatible endpoint at `localhost:11434/v1`
+- No API key required — uses a dummy `"ollama"` key
+- Same response parsing as OpenAIProvider (OpenAI-compatible format)
+- The `ollama/` model prefix is stripped before passing to the provider
 - Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
 
 ### OpenRouterProvider
