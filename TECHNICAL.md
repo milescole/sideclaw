@@ -29,7 +29,7 @@ The runtime now exposes an explicit run boundary:
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
 | Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
-| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/openrouter.py` | LLM abstraction and OpenRouter implementation via LiteLLM |
+| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openrouter.py` | LLM abstraction with Anthropic and OpenRouter implementations |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools, registry, and construction via `build_default_tool_registry()` |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
@@ -45,7 +45,7 @@ sequenceDiagram
     participant App as app/cli.py or app/gateway.py
     participant Runtime as RuntimeService
     participant Agent as RuntimeLoop
-    participant LLM as OpenRouterProvider
+    participant LLM as LLMProvider
     participant Tools as ToolRegistry
     participant Session as SessionManager
 
@@ -187,8 +187,11 @@ Schema root: `Config` in `sideclaw/config/schema.py`
   - `max_tokens` default: `4096`
   - `temperature` default: `0.7`
   - `memory_window` default: `50`
+- `agent.provider` default: `auto` — selects the LLM provider; `auto` infers from model name
+- `providers.anthropic`
+  - `api_key` (required when using Anthropic models directly)
 - `providers.openrouter`
-  - `api_key` (required to run agent/gateway)
+  - `api_key` (required when using OpenRouter)
   - `api_base` default: `https://openrouter.ai/api/v1`
 - `channels.telegram`
   - bot token
@@ -239,7 +242,24 @@ This keeps the CLI surface thin while preserving a dedicated place for future ga
 
 ## 10. Provider Layer
 
-`OpenRouterProvider`:
+Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py`. When
+`agent.provider` is `"auto"` (the default), the factory infers the provider from the model name:
+
+- `claude*` → Anthropic
+- Unrecognized / prefixed models → OpenRouter (fallback)
+
+Explicit values (`"anthropic"`, `"openrouter"`) bypass auto-detection.
+
+### AnthropicProvider
+
+- Uses the official `anthropic` SDK (`AsyncAnthropic`)
+- Extracts `system` messages into the separate `system` parameter required by the Messages API
+- Converts OpenAI-style tool definitions to Anthropic `input_schema` format
+- Converts `tool_use` / `tool_result` blocks between OpenAI and Anthropic conventions
+- Maps `stop_reason`: `end_turn` → `stop`, `tool_use` → `tool_calls`, `max_tokens` → `length`
+- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+
+### OpenRouterProvider
 
 - Uses async LiteLLM `acompletion`
 - Prefixes models with `openrouter/` when needed
@@ -295,7 +315,7 @@ uv run pytest
 
 1. Implement `LLMProvider` in `sideclaw/providers/`
 2. Extend config schema for provider credentials/options
-3. Wire provider creation in `sideclaw/app/factory.py`
+3. Add detection logic and instantiation branch in `_build_provider()` / `_detect_provider()` in `sideclaw/app/factory.py`
 
 ### Add a new channel
 
@@ -309,5 +329,6 @@ uv run pytest
 - Typer: https://typer.tiangolo.com/
 - Pydantic: https://docs.pydantic.dev/
 - LiteLLM: https://docs.litellm.ai/
+- Anthropic SDK: https://docs.anthropic.com/en/api/client-sdks
 - OpenRouter API: https://openrouter.ai/docs/api-reference/overview
 - python-telegram-bot: https://docs.python-telegram-bot.org/

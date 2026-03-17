@@ -83,7 +83,7 @@ sideclaw/
 ├── config/        # Pydantic config schema plus load/save helpers
 ├── cron/          # persisted scheduler service and due-job execution
 ├── memory/        # long-term memory store built on workspace markdown files
-├── providers/     # LLM abstraction and OpenRouter implementation via LiteLLM
+├── providers/     # LLM abstraction with Anthropic and OpenRouter implementations
 ├── runtime/       # approval policy, clarify flow, run models, runtime service, and transient run state
 ├── session/       # JSONL-backed per-chat session persistence and locking
 ├── skills/        # built-in skill prompts copied into workspaces and loaded by relevance
@@ -113,7 +113,8 @@ tests/
 - `sideclaw/cli/main.py`: process entry point and Typer wiring for the CLI.
 - `sideclaw/cli/commands/`: command implementation modules for onboarding, status, agent, cron, and gateway behavior.
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
-- `sideclaw/app/factory.py`: shared runtime construction for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
+- `sideclaw/app/factory.py`: shared runtime construction and provider routing (`_build_provider` / `_detect_provider`) for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
+- `sideclaw/providers/anthropic.py`: direct Anthropic provider via official SDK with system prompt extraction and tool format conversion.
 - `sideclaw/app/cli.py` and `sideclaw/app/gateway.py`: surface-specific composition hooks for approval semantics and future host divergence.
 - `sideclaw/runtime/service.py`: stable run boundary used by CLI and gateway surfaces; adapts `RunRequest`/`RunResult` to the runtime loop.
 - `sideclaw/runtime/state.py`: in-memory run-scoped state, events, outputs, and lifecycle phase tracking.
@@ -162,7 +163,7 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
 
 1. Implement the `LLMProvider` contract in `sideclaw/providers/`.
 2. Extend config loading/schema.
-3. Wire provider selection in `sideclaw/app/factory.py`.
+3. Add detection logic and instantiation branch in `_build_provider()` / `_detect_provider()` in `sideclaw/app/factory.py`.
 4. Verify tool-call parsing and error-path behavior in tests.
 
 ### Adding or changing workspace skills

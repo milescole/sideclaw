@@ -13,10 +13,17 @@ class OpenRouterConfig(BaseModel):
     api_base: str = "https://openrouter.ai/api/v1"
 
 
+class AnthropicConfig(BaseModel):
+    """Anthropic provider configuration."""
+
+    api_key: str
+
+
 class ProvidersConfig(BaseModel):
     """LLM provider configurations."""
 
     openrouter: OpenRouterConfig | None = None
+    anthropic: AnthropicConfig | None = None
 
 
 class AgentConfig(BaseModel):
@@ -27,6 +34,7 @@ class AgentConfig(BaseModel):
     max_tokens: int = 4096
     temperature: float = 0.7
     memory_window: int = 50
+    provider: str = "auto"
 
 
 class TelegramConfig(BaseModel):

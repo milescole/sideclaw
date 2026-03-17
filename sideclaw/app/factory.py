@@ -28,19 +28,57 @@ class AppRuntime:
     runtime_service: "RuntimeService"
 
 
+def _detect_provider(model: str) -> str:
+    """Infer the provider name from the model identifier."""
+    lower = model.lower()
+    if lower.startswith("claude"):
+        return "anthropic"
+    if any(lower.startswith(p) for p in ("gpt-", "o1-", "o3-", "o4-")):
+        return "openai"
+    if lower.startswith("ollama/"):
+        return "ollama"
+    return "openrouter"
+
+
+def _build_provider(config: Config) -> "LLMProvider":
+    """Build the appropriate LLM provider based on config."""
+    provider_name = config.agent.provider
+    model = config.agent.model
+
+    if provider_name == "auto":
+        provider_name = _detect_provider(model)
+
+    if provider_name == "anthropic":
+        from sideclaw.providers.anthropic import AnthropicProvider
+
+        cfg = config.providers.anthropic
+        if cfg is None:
+            msg = "Anthropic provider requires providers.anthropic config"
+            raise ValueError(msg)
+        return AnthropicProvider(api_key=cfg.api_key, default_model=model)
+
+    if provider_name == "openrouter":
+        from sideclaw.providers.openrouter import OpenRouterProvider
+
+        cfg = config.providers.openrouter
+        if cfg is None:
+            msg = "OpenRouter must be configured"
+            raise ValueError(msg)
+        return OpenRouterProvider(
+            api_key=cfg.api_key, default_model=model, api_base=cfg.api_base
+        )
+
+    msg = f"Unknown provider: {provider_name}"
+    raise ValueError(msg)
+
+
 def build_runtime(config: Config) -> AppRuntime:
     """Build the common runtime dependencies used by app composition roots."""
     from sideclaw.bus.queue import MessageBus
     from sideclaw.cron import CronService, cron_store_path
-    from sideclaw.providers.openrouter import OpenRouterProvider
     from sideclaw.runtime.loop import RuntimeLoop
     from sideclaw.runtime.service import RuntimeService
     from sideclaw.session.manager import SessionManager
-
-    provider_config = config.providers.openrouter
-    if provider_config is None:
-        msg = "OpenRouter must be configured before building the runtime"
-        raise ValueError(msg)
 
     workspace = config.workspace_path
     workspace.mkdir(parents=True, exist_ok=True)
@@ -48,11 +86,7 @@ def build_runtime(config: Config) -> AppRuntime:
     session_dir.mkdir(exist_ok=True)
 
     bus = MessageBus()
-    provider = OpenRouterProvider(
-        api_key=provider_config.api_key,
-        default_model=config.agent.model,
-        api_base=provider_config.api_base,
-    )
+    provider = _build_provider(config)
     session_manager = SessionManager(session_dir)
     cron_service = CronService(
         cron_store_path(workspace),

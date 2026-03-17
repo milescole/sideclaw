@@ -1,8 +1,17 @@
 import sys
 from importlib import import_module
 from pathlib import Path
+from unittest.mock import patch
 
-from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig
+import pytest
+
+from sideclaw.config.schema import (
+    AgentConfig,
+    AnthropicConfig,
+    Config,
+    OpenRouterConfig,
+    ProvidersConfig,
+)
 
 
 def test_build_runtime_wires_common_dependencies(tmp_path: Path) -> None:
@@ -35,3 +44,71 @@ def test_importing_factory_does_not_eagerly_import_runtime_dependencies() -> Non
 
     assert "sideclaw.runtime.loop" not in sys.modules
     assert "sideclaw.providers.openrouter" not in sys.modules
+
+
+def test_detect_provider_claude_model() -> None:
+    from sideclaw.app.factory import _detect_provider
+
+    assert _detect_provider("claude-opus-4-6") == "anthropic"
+    assert _detect_provider("claude-haiku-4-5-20251001") == "anthropic"
+
+
+def test_detect_provider_defaults_to_openrouter() -> None:
+    from sideclaw.app.factory import _detect_provider
+
+    assert _detect_provider("openai/gpt-4o-mini") == "openrouter"
+    assert _detect_provider("some-unknown-model") == "openrouter"
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+def test_build_provider_auto_anthropic(mock_sdk, tmp_path: Path) -> None:
+    mock_sdk.AsyncAnthropic.return_value = object()
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.anthropic import AnthropicProvider
+
+    config = Config(
+        agent=AgentConfig(model="claude-opus-4-6", workspace=str(tmp_path)),
+        providers=ProvidersConfig(anthropic=AnthropicConfig(api_key="sk-ant-test")),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, AnthropicProvider)
+    assert provider.get_default_model() == "claude-opus-4-6"
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+def test_build_provider_explicit_anthropic(mock_sdk, tmp_path: Path) -> None:
+    mock_sdk.AsyncAnthropic.return_value = object()
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.anthropic import AnthropicProvider
+
+    config = Config(
+        agent=AgentConfig(
+            model="claude-opus-4-6", provider="anthropic", workspace=str(tmp_path)
+        ),
+        providers=ProvidersConfig(anthropic=AnthropicConfig(api_key="sk-ant-test")),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, AnthropicProvider)
+
+
+def test_build_provider_anthropic_missing_config(tmp_path: Path) -> None:
+    from sideclaw.app.factory import _build_provider
+
+    config = Config(
+        agent=AgentConfig(model="claude-opus-4-6", workspace=str(tmp_path)),
+        providers=ProvidersConfig(),
+    )
+    with pytest.raises(ValueError, match="Anthropic provider requires"):
+        _build_provider(config)
+
+
+def test_build_provider_openrouter_explicit(tmp_path: Path) -> None:
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.openrouter import OpenRouterProvider
+
+    config = Config(
+        agent=AgentConfig(model="openai/gpt-4o-mini", workspace=str(tmp_path)),
+        providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-or-test")),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, OpenRouterProvider)

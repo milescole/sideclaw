@@ -32,7 +32,7 @@ flowchart LR
     C --> APP[app/cli.py or app/gateway.py]
     APP --> R[RuntimeService<br/>RunRequest -> RunResult]
     R --> A[RuntimeLoop]
-    A --> P[LLM Provider<br/>OpenRouter via LiteLLM]
+    A --> P[LLM Provider<br/>Anthropic, OpenRouter via LiteLLM]
     A --> T[ToolRegistry<br/>filesystem, shell, web, memory]
     A --> S[SessionManager<br/>JSONL sessions]
     A --> M[MemoryStore<br/>MEMORY.md + HISTORY.md]
@@ -55,7 +55,7 @@ sideclaw/
     cli/           # Typer entrypoint, command surfaces, and shared CLI render helpers
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
-    providers/     # LLM abstraction + OpenRouter implementation
+    providers/     # LLM abstraction + Anthropic and OpenRouter implementations
     runtime/       # runtime loop, run models, runtime service, approval policy, and transient run state
     session/       # JSONL-backed session persistence
     skills/        # built-in prompt skills
@@ -69,7 +69,7 @@ sideclaw/
 
 - Python `>=3.13`
 - [`uv`](https://docs.astral.sh/uv/) for dependency and environment management
-- OpenRouter API key for live model calls
+- Anthropic API key **or** OpenRouter API key for live model calls
 - Optional: Telegram bot token for gateway mode
 - Optional: `playwright` browser install for browser automation (`uv run playwright install`)
 
@@ -159,7 +159,8 @@ Default config path:
 
 Core configuration sections:
 
-- `agent`: model, workspace, token/temperature defaults, memory window
+- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openrouter`)
+- `providers.anthropic`: API key (for direct Anthropic access)
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
 - `tools`: browser enablement, fal.ai image key/model/upscaler settings, shell exec, text-to-speech settings, web search provider/key, and other tool-specific flags
@@ -245,5 +246,6 @@ uv run ruff format .
 - [Typer](https://typer.tiangolo.com/)
 - [Pydantic](https://docs.pydantic.dev/)
 - [LiteLLM](https://docs.litellm.ai/)
+- [Anthropic SDK](https://docs.anthropic.com/en/api/client-sdks)
 - [OpenRouter](https://openrouter.ai/docs/api-reference/overview)
 - [python-telegram-bot](https://docs.python-telegram-bot.org/)
