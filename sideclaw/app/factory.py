@@ -57,6 +57,15 @@ def _build_provider(config: Config) -> "LLMProvider":
             raise ValueError(msg)
         return AnthropicProvider(api_key=cfg.api_key, default_model=model)
 
+    if provider_name == "openai":
+        from sideclaw.providers.openai_provider import OpenAIProvider
+
+        cfg = config.providers.openai
+        if cfg is None:
+            msg = "OpenAI provider requires providers.openai config"
+            raise ValueError(msg)
+        return OpenAIProvider(api_key=cfg.api_key, default_model=model, api_base=cfg.api_base)
+
     if provider_name == "openrouter":
         from sideclaw.providers.openrouter import OpenRouterProvider
 

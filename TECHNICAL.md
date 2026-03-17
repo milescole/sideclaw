@@ -29,7 +29,7 @@ The runtime now exposes an explicit run boundary:
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
 | Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
-| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openrouter.py` | LLM abstraction with Anthropic and OpenRouter implementations |
+| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/openrouter.py` | LLM abstraction with Anthropic, OpenAI, and OpenRouter implementations |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools, registry, and construction via `build_default_tool_registry()` |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
@@ -190,6 +190,9 @@ Schema root: `Config` in `sideclaw/config/schema.py`
 - `agent.provider` default: `auto` — selects the LLM provider; `auto` infers from model name
 - `providers.anthropic`
   - `api_key` (required when using Anthropic models directly)
+- `providers.openai`
+  - `api_key` (required when using OpenAI models directly)
+  - `api_base` default: `https://api.openai.com/v1`
 - `providers.openrouter`
   - `api_key` (required when using OpenRouter)
   - `api_base` default: `https://openrouter.ai/api/v1`
@@ -246,9 +249,10 @@ Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py
 `agent.provider` is `"auto"` (the default), the factory infers the provider from the model name:
 
 - `claude*` → Anthropic
+- `gpt-*`, `o1-*`, `o3-*`, `o4-*` → OpenAI
 - Unrecognized / prefixed models → OpenRouter (fallback)
 
-Explicit values (`"anthropic"`, `"openrouter"`) bypass auto-detection.
+Explicit values (`"anthropic"`, `"openai"`, `"openrouter"`) bypass auto-detection.
 
 ### AnthropicProvider
 
@@ -257,6 +261,14 @@ Explicit values (`"anthropic"`, `"openrouter"`) bypass auto-detection.
 - Converts OpenAI-style tool definitions to Anthropic `input_schema` format
 - Converts `tool_use` / `tool_result` blocks between OpenAI and Anthropic conventions
 - Maps `stop_reason`: `end_turn` → `stop`, `tool_use` → `tool_calls`, `max_tokens` → `length`
+- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+
+### OpenAIProvider
+
+- Uses the official `openai` SDK (`AsyncOpenAI`)
+- Messages pass through in native OpenAI format with key sanitization
+- Tool definitions pass through as-is (OpenAI native format)
+- Supports custom `api_base` for compatible endpoints
 - Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
 
 ### OpenRouterProvider
@@ -330,5 +342,6 @@ uv run pytest
 - Pydantic: https://docs.pydantic.dev/
 - LiteLLM: https://docs.litellm.ai/
 - Anthropic SDK: https://docs.anthropic.com/en/api/client-sdks
+- OpenAI SDK: https://platform.openai.com/docs/libraries
 - OpenRouter API: https://openrouter.ai/docs/api-reference/overview
 - python-telegram-bot: https://docs.python-telegram-bot.org/

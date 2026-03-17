@@ -9,6 +9,7 @@ from sideclaw.config.schema import (
     AgentConfig,
     AnthropicConfig,
     Config,
+    OpenAIConfig,
     OpenRouterConfig,
     ProvidersConfig,
 )
@@ -51,6 +52,16 @@ def test_detect_provider_claude_model() -> None:
 
     assert _detect_provider("claude-opus-4-6") == "anthropic"
     assert _detect_provider("claude-haiku-4-5-20251001") == "anthropic"
+
+
+def test_detect_provider_openai_models() -> None:
+    from sideclaw.app.factory import _detect_provider
+
+    assert _detect_provider("gpt-4o-mini") == "openai"
+    assert _detect_provider("gpt-4o") == "openai"
+    assert _detect_provider("o1-preview") == "openai"
+    assert _detect_provider("o3-mini") == "openai"
+    assert _detect_provider("o4-mini") == "openai"
 
 
 def test_detect_provider_defaults_to_openrouter() -> None:
@@ -99,6 +110,46 @@ def test_build_provider_anthropic_missing_config(tmp_path: Path) -> None:
         providers=ProvidersConfig(),
     )
     with pytest.raises(ValueError, match="Anthropic provider requires"):
+        _build_provider(config)
+
+
+@patch("sideclaw.providers.openai_provider.openai")
+def test_build_provider_auto_openai(mock_sdk, tmp_path: Path) -> None:
+    mock_sdk.AsyncOpenAI.return_value = object()
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.openai_provider import OpenAIProvider
+
+    config = Config(
+        agent=AgentConfig(model="gpt-4o-mini", workspace=str(tmp_path)),
+        providers=ProvidersConfig(openai=OpenAIConfig(api_key="sk-test")),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, OpenAIProvider)
+    assert provider.get_default_model() == "gpt-4o-mini"
+
+
+@patch("sideclaw.providers.openai_provider.openai")
+def test_build_provider_explicit_openai(mock_sdk, tmp_path: Path) -> None:
+    mock_sdk.AsyncOpenAI.return_value = object()
+    from sideclaw.app.factory import _build_provider
+    from sideclaw.providers.openai_provider import OpenAIProvider
+
+    config = Config(
+        agent=AgentConfig(model="gpt-4o", provider="openai", workspace=str(tmp_path)),
+        providers=ProvidersConfig(openai=OpenAIConfig(api_key="sk-test")),
+    )
+    provider = _build_provider(config)
+    assert isinstance(provider, OpenAIProvider)
+
+
+def test_build_provider_openai_missing_config(tmp_path: Path) -> None:
+    from sideclaw.app.factory import _build_provider
+
+    config = Config(
+        agent=AgentConfig(model="gpt-4o-mini", workspace=str(tmp_path)),
+        providers=ProvidersConfig(),
+    )
+    with pytest.raises(ValueError, match="OpenAI provider requires"):
         _build_provider(config)
 
 

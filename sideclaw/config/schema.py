@@ -19,11 +19,19 @@ class AnthropicConfig(BaseModel):
     api_key: str
 
 
+class OpenAIConfig(BaseModel):
+    """OpenAI provider configuration."""
+
+    api_key: str
+    api_base: str = "https://api.openai.com/v1"
+
+
 class ProvidersConfig(BaseModel):
     """LLM provider configurations."""
 
     openrouter: OpenRouterConfig | None = None
     anthropic: AnthropicConfig | None = None
+    openai: OpenAIConfig | None = None
 
 
 class AgentConfig(BaseModel):

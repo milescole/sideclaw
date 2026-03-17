@@ -32,7 +32,7 @@ flowchart LR
     C --> APP[app/cli.py or app/gateway.py]
     APP --> R[RuntimeService<br/>RunRequest -> RunResult]
     R --> A[RuntimeLoop]
-    A --> P[LLM Provider<br/>Anthropic, OpenRouter via LiteLLM]
+    A --> P[LLM Provider<br/>Anthropic, OpenAI, OpenRouter via LiteLLM]
     A --> T[ToolRegistry<br/>filesystem, shell, web, memory]
     A --> S[SessionManager<br/>JSONL sessions]
     A --> M[MemoryStore<br/>MEMORY.md + HISTORY.md]
@@ -55,7 +55,7 @@ sideclaw/
     cli/           # Typer entrypoint, command surfaces, and shared CLI render helpers
     config/        # pydantic schema + JSON loader/saver
     memory/        # long-term memory store
-    providers/     # LLM abstraction + Anthropic and OpenRouter implementations
+    providers/     # LLM abstraction + Anthropic, OpenAI, and OpenRouter implementations
     runtime/       # runtime loop, run models, runtime service, approval policy, and transient run state
     session/       # JSONL-backed session persistence
     skills/        # built-in prompt skills
@@ -159,8 +159,9 @@ Default config path:
 
 Core configuration sections:
 
-- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openrouter`)
+- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openai`/`openrouter`)
 - `providers.anthropic`: API key (for direct Anthropic access)
+- `providers.openai`: API key and optional base URL (for direct OpenAI access)
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
 - `tools`: browser enablement, fal.ai image key/model/upscaler settings, shell exec, text-to-speech settings, web search provider/key, and other tool-specific flags
@@ -247,5 +248,6 @@ uv run ruff format .
 - [Pydantic](https://docs.pydantic.dev/)
 - [LiteLLM](https://docs.litellm.ai/)
 - [Anthropic SDK](https://docs.anthropic.com/en/api/client-sdks)
+- [OpenAI SDK](https://platform.openai.com/docs/libraries)
 - [OpenRouter](https://openrouter.ai/docs/api-reference/overview)
 - [python-telegram-bot](https://docs.python-telegram-bot.org/)
