@@ -19,9 +19,12 @@ class AnthropicProvider(LLMProvider):
         self,
         api_key: str,
         default_model: str = "claude-opus-4-6",
+        *,
+        prompt_caching: bool = True,
     ) -> None:
         self._api_key = api_key
         self._default_model = default_model
+        self._prompt_caching = prompt_caching
         self._client = anthropic.AsyncAnthropic(api_key=api_key)
 
     async def chat(
@@ -55,12 +58,16 @@ class AnthropicProvider(LLMProvider):
 
     def _convert_messages(
         self, messages: list[dict[str, Any]]
-    ) -> tuple[str | None, list[dict[str, Any]]]:
+    ) -> tuple[str | list[dict[str, Any]] | None, list[dict[str, Any]]]:
         """Extract system messages and convert the rest to Anthropic format.
 
         Anthropic requires system content as a separate parameter and does not
         accept ``role: "system"`` inside the messages list.  Tool-call and
         tool-result messages are converted to Anthropic's block format.
+
+        When prompt caching is enabled, the system parameter is returned as a
+        list of content blocks with ``cache_control`` on the last block.
+        Otherwise it is returned as a plain string.
         """
         system_parts: list[str] = []
         result: list[dict[str, Any]] = []
@@ -88,45 +95,66 @@ class AnthropicProvider(LLMProvider):
                 for tc in msg["tool_calls"]:
                     fn = tc.get("function", tc)
                     arguments = fn.get("arguments", "{}")
-                    content_blocks.append({
-                        "type": "tool_use",
-                        "id": tc.get("id", ""),
-                        "name": fn.get("name", ""),
-                        "input": json.loads(arguments) if isinstance(arguments, str) else arguments,
-                    })
+                    content_blocks.append(
+                        {
+                            "type": "tool_use",
+                            "id": tc.get("id", ""),
+                            "name": fn.get("name", ""),
+                            "input": json.loads(arguments)
+                            if isinstance(arguments, str)
+                            else arguments,
+                        }
+                    )
                 result.append({"role": "assistant", "content": content_blocks})
                 continue
 
             if role == "tool":
                 # Convert OpenAI-style tool result to Anthropic tool_result block.
-                result.append({
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "tool_result",
-                            "tool_use_id": msg.get("tool_call_id", ""),
-                            "content": msg.get("content", ""),
-                        }
-                    ],
-                })
+                result.append(
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "tool_use_id": msg.get("tool_call_id", ""),
+                                "content": msg.get("content", ""),
+                            }
+                        ],
+                    }
+                )
                 continue
 
             # Standard user/assistant messages pass through.
             result.append({"role": role, "content": msg.get("content", "")})
 
-        system_text = "\n".join(system_parts) if system_parts else None
-        return system_text, result
+        if not system_parts:
+            return None, result
+
+        if self._prompt_caching:
+            system_blocks = [{"type": "text", "text": part} for part in system_parts]
+            system_blocks[-1]["cache_control"] = {"type": "ephemeral"}
+            return system_blocks, result
+
+        return "\n".join(system_parts), result
 
     def _convert_tools(self, tools: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Convert OpenAI function-call tool definitions to Anthropic format."""
+        """Convert OpenAI function-call tool definitions to Anthropic format.
+
+        When prompt caching is enabled, adds ``cache_control`` to the last tool
+        definition so the full tool block is cached alongside the system prompt.
+        """
         converted: list[dict[str, Any]] = []
         for tool in tools:
             fn = tool.get("function", {})
-            converted.append({
-                "name": fn.get("name", ""),
-                "description": fn.get("description", ""),
-                "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
-            })
+            converted.append(
+                {
+                    "name": fn.get("name", ""),
+                    "description": fn.get("description", ""),
+                    "input_schema": fn.get("parameters", {"type": "object", "properties": {}}),
+                }
+            )
+        if self._prompt_caching and converted:
+            converted[-1]["cache_control"] = {"type": "ephemeral"}
         return converted
 
     _STOP_REASON_MAP: ClassVar[dict[str, str]] = {
@@ -156,12 +184,20 @@ class AnthropicProvider(LLMProvider):
         content = "\n".join(text_parts) if text_parts else None
         finish_reason = self._STOP_REASON_MAP.get(response.stop_reason, "stop")
 
+        usage: dict[str, int] = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
+        cache_creation = getattr(response.usage, "cache_creation_input_tokens", None)
+        cache_read = getattr(response.usage, "cache_read_input_tokens", None)
+        if cache_creation is not None:
+            usage["cache_creation_tokens"] = cache_creation
+        if cache_read is not None:
+            usage["cache_read_tokens"] = cache_read
+
         return LLMResponse(
             content=content,
             tool_calls=tool_calls,
             finish_reason=finish_reason,
-            usage={
-                "prompt_tokens": response.usage.input_tokens,
-                "completion_tokens": response.usage.output_tokens,
-            },
+            usage=usage,
         )

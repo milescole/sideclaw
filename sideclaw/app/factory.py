@@ -54,7 +54,9 @@ def _build_provider(config: Config) -> "LLMProvider":
         if cfg is None:
             msg = "Anthropic provider requires providers.anthropic config"
             raise ValueError(msg)
-        inner = AnthropicProvider(api_key=cfg.api_key, default_model=model)
+        inner = AnthropicProvider(
+            api_key=cfg.api_key, default_model=model, prompt_caching=cfg.prompt_caching
+        )
 
     elif provider_name == "openai":
         from sideclaw.providers.openai_provider import OpenAIProvider

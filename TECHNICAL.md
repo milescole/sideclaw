@@ -290,6 +290,13 @@ and exponential backoff. Individual providers let exceptions propagate; `RetryPr
 - Converts `tool_use` / `tool_result` blocks between OpenAI and Anthropic conventions
 - Maps `stop_reason`: `end_turn` → `stop`, `tool_use` → `tool_calls`, `max_tokens` → `length`
 - Lets exceptions propagate to `RetryProvider`
+- **Prompt caching** (enabled by default via `providers.anthropic.prompt_caching`):
+  - System prompt emitted as list-of-blocks with `cache_control: {"type": "ephemeral"}` on the
+    last block (uses 1 of 4 available cache breakpoints)
+  - Tool definitions get `cache_control` on the last tool (uses 1 breakpoint)
+  - Cache usage fields (`cache_creation_tokens`, `cache_read_tokens`) extracted from response
+    when present
+  - Can reduce input token costs by ~90% on cache hits for stable system prompts and tools
 
 ### OpenAIProvider
 

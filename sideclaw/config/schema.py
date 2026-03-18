@@ -17,6 +17,7 @@ class AnthropicConfig(BaseModel):
     """Anthropic provider configuration."""
 
     api_key: str
+    prompt_caching: bool = True
 
 
 class OpenAIConfig(BaseModel):

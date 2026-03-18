@@ -27,11 +27,14 @@ async def test_anthropic_text_response(mock_sdk):
     text_block.type = "text"
     text_block.text = "Hello from Claude!"
 
+    mock_usage = MagicMock(spec=["input_tokens", "output_tokens"])
+    mock_usage.input_tokens = 15
+    mock_usage.output_tokens = 8
+
     mock_response = MagicMock()
     mock_response.content = [text_block]
     mock_response.stop_reason = "end_turn"
-    mock_response.usage.input_tokens = 15
-    mock_response.usage.output_tokens = 8
+    mock_response.usage = mock_usage
 
     mock_client.messages.create = AsyncMock(return_value=mock_response)
 
@@ -117,9 +120,30 @@ async def test_anthropic_mixed_text_and_tool_response(mock_sdk):
 
 
 @patch("sideclaw.providers.anthropic.anthropic")
-def test_anthropic_system_message_extraction(mock_sdk):
+def test_anthropic_system_message_extraction_with_caching(mock_sdk):
     mock_sdk.AsyncAnthropic.return_value = MagicMock()
     provider = AnthropicProvider(api_key="sk-ant-test")
+
+    messages = [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "Hello"},
+    ]
+    system, converted = provider._convert_messages(messages)
+
+    # With caching enabled (default), system is list-of-blocks with cache_control
+    assert isinstance(system, list)
+    assert len(system) == 1
+    assert system[0]["type"] == "text"
+    assert system[0]["text"] == "You are helpful."
+    assert system[0]["cache_control"] == {"type": "ephemeral"}
+    assert len(converted) == 1
+    assert converted[0]["role"] == "user"
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+def test_anthropic_system_message_extraction_no_caching(mock_sdk):
+    mock_sdk.AsyncAnthropic.return_value = MagicMock()
+    provider = AnthropicProvider(api_key="sk-ant-test", prompt_caching=False)
 
     messages = [
         {"role": "system", "content": "You are helpful."},
@@ -133,7 +157,7 @@ def test_anthropic_system_message_extraction(mock_sdk):
 
 
 @patch("sideclaw.providers.anthropic.anthropic")
-def test_anthropic_multiple_system_messages(mock_sdk):
+def test_anthropic_multiple_system_messages_with_caching(mock_sdk):
     mock_sdk.AsyncAnthropic.return_value = MagicMock()
     provider = AnthropicProvider(api_key="sk-ant-test")
 
@@ -144,7 +168,12 @@ def test_anthropic_multiple_system_messages(mock_sdk):
     ]
     system, converted = provider._convert_messages(messages)
 
-    assert system == "Rule one.\nRule two."
+    assert isinstance(system, list)
+    assert len(system) == 2
+    assert system[0]["text"] == "Rule one."
+    assert "cache_control" not in system[0]
+    assert system[1]["text"] == "Rule two."
+    assert system[1]["cache_control"] == {"type": "ephemeral"}
     assert len(converted) == 1
 
 
@@ -194,7 +223,7 @@ def test_anthropic_tool_call_message_conversion(mock_sdk):
 
 
 @patch("sideclaw.providers.anthropic.anthropic")
-def test_anthropic_tool_format_conversion(mock_sdk):
+def test_anthropic_tool_format_conversion_with_caching(mock_sdk):
     mock_sdk.AsyncAnthropic.return_value = MagicMock()
     provider = AnthropicProvider(api_key="sk-ant-test")
 
@@ -219,6 +248,44 @@ def test_anthropic_tool_format_conversion(mock_sdk):
     assert result[0]["description"] == "Read a file"
     assert result[0]["input_schema"]["type"] == "object"
     assert "path" in result[0]["input_schema"]["properties"]
+    assert result[0]["cache_control"] == {"type": "ephemeral"}
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+def test_anthropic_tool_format_conversion_no_caching(mock_sdk):
+    mock_sdk.AsyncAnthropic.return_value = MagicMock()
+    provider = AnthropicProvider(api_key="sk-ant-test", prompt_caching=False)
+
+    openai_tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "read_file",
+                "description": "Read a file",
+                "parameters": {"type": "object", "properties": {"path": {"type": "string"}}},
+            },
+        }
+    ]
+    result = provider._convert_tools(openai_tools)
+
+    assert len(result) == 1
+    assert "cache_control" not in result[0]
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+def test_anthropic_multiple_tools_cache_on_last(mock_sdk):
+    mock_sdk.AsyncAnthropic.return_value = MagicMock()
+    provider = AnthropicProvider(api_key="sk-ant-test")
+
+    openai_tools = [
+        {"type": "function", "function": {"name": "tool_a", "description": "A", "parameters": {}}},
+        {"type": "function", "function": {"name": "tool_b", "description": "B", "parameters": {}}},
+    ]
+    result = provider._convert_tools(openai_tools)
+
+    assert len(result) == 2
+    assert "cache_control" not in result[0]
+    assert result[1]["cache_control"] == {"type": "ephemeral"}
 
 
 @patch("sideclaw.providers.anthropic.anthropic")
@@ -253,3 +320,58 @@ async def test_anthropic_max_tokens_stop_reason(mock_sdk):
     result = await provider.chat(messages=[{"role": "user", "content": "long response please"}])
 
     assert result.finish_reason == "length"
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+async def test_anthropic_cache_usage_fields(mock_sdk):
+    mock_client = AsyncMock()
+    mock_sdk.AsyncAnthropic.return_value = mock_client
+
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = "Cached response"
+
+    mock_response = MagicMock()
+    mock_response.content = [text_block]
+    mock_response.stop_reason = "end_turn"
+    mock_response.usage.input_tokens = 100
+    mock_response.usage.output_tokens = 20
+    mock_response.usage.cache_creation_input_tokens = 500
+    mock_response.usage.cache_read_input_tokens = 80
+
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    provider = AnthropicProvider(api_key="sk-ant-test")
+    result = await provider.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert result.usage["prompt_tokens"] == 100
+    assert result.usage["completion_tokens"] == 20
+    assert result.usage["cache_creation_tokens"] == 500
+    assert result.usage["cache_read_tokens"] == 80
+
+
+@patch("sideclaw.providers.anthropic.anthropic")
+async def test_anthropic_no_cache_usage_when_absent(mock_sdk):
+    mock_client = AsyncMock()
+    mock_sdk.AsyncAnthropic.return_value = mock_client
+
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = "Response"
+
+    mock_response = MagicMock(spec=["content", "stop_reason", "usage"])
+    mock_response.content = [text_block]
+    mock_response.stop_reason = "end_turn"
+    mock_usage = MagicMock(spec=["input_tokens", "output_tokens"])
+    mock_usage.input_tokens = 10
+    mock_usage.output_tokens = 5
+    mock_response.usage = mock_usage
+
+    mock_client.messages.create = AsyncMock(return_value=mock_response)
+
+    provider = AnthropicProvider(api_key="sk-ant-test")
+    result = await provider.chat(messages=[{"role": "user", "content": "hi"}])
+
+    assert result.usage == {"prompt_tokens": 10, "completion_tokens": 5}
+    assert "cache_creation_tokens" not in result.usage
+    assert "cache_read_tokens" not in result.usage
