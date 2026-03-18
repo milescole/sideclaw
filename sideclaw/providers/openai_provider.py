@@ -6,7 +6,6 @@ File named openai_provider.py to avoid shadowing the openai package.
 from typing import Any
 
 import openai
-from loguru import logger
 
 from sideclaw.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
@@ -45,12 +44,8 @@ class OpenAIProvider(LLMProvider):
         if tools:
             kwargs["tools"] = tools
 
-        try:
-            response = await self._client.chat.completions.create(**kwargs)
-            return self._parse_response(response)
-        except Exception as e:  # noqa: BLE001
-            logger.error(f"OpenAI call failed: {e}")
-            return LLMResponse(content=f"Error: {e}", finish_reason="error")
+        response = await self._client.chat.completions.create(**kwargs)
+        return self._parse_response(response)
 
     def get_default_model(self) -> str:
         return self._default_model

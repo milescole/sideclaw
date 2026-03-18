@@ -84,13 +84,15 @@ def test_build_provider_auto_anthropic(mock_sdk, tmp_path: Path) -> None:
     mock_sdk.AsyncAnthropic.return_value = object()
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.anthropic import AnthropicProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(model="claude-opus-4-6", workspace=str(tmp_path)),
         providers=ProvidersConfig(anthropic=AnthropicConfig(api_key="sk-ant-test")),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, AnthropicProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, AnthropicProvider)
     assert provider.get_default_model() == "claude-opus-4-6"
 
 
@@ -99,6 +101,7 @@ def test_build_provider_explicit_anthropic(mock_sdk, tmp_path: Path) -> None:
     mock_sdk.AsyncAnthropic.return_value = object()
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.anthropic import AnthropicProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(
@@ -107,7 +110,8 @@ def test_build_provider_explicit_anthropic(mock_sdk, tmp_path: Path) -> None:
         providers=ProvidersConfig(anthropic=AnthropicConfig(api_key="sk-ant-test")),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, AnthropicProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, AnthropicProvider)
 
 
 def test_build_provider_anthropic_missing_config(tmp_path: Path) -> None:
@@ -126,13 +130,15 @@ def test_build_provider_auto_openai(mock_sdk, tmp_path: Path) -> None:
     mock_sdk.AsyncOpenAI.return_value = object()
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.openai_provider import OpenAIProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(model="gpt-4o-mini", workspace=str(tmp_path)),
         providers=ProvidersConfig(openai=OpenAIConfig(api_key="sk-test")),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, OpenAIProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, OpenAIProvider)
     assert provider.get_default_model() == "gpt-4o-mini"
 
 
@@ -141,13 +147,15 @@ def test_build_provider_explicit_openai(mock_sdk, tmp_path: Path) -> None:
     mock_sdk.AsyncOpenAI.return_value = object()
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.openai_provider import OpenAIProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(model="gpt-4o", provider="openai", workspace=str(tmp_path)),
         providers=ProvidersConfig(openai=OpenAIConfig(api_key="sk-test")),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, OpenAIProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, OpenAIProvider)
 
 
 def test_build_provider_openai_missing_config(tmp_path: Path) -> None:
@@ -166,13 +174,15 @@ def test_build_provider_auto_ollama(mock_sdk, tmp_path: Path) -> None:
     mock_sdk.AsyncOpenAI.return_value = object()
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.ollama import OllamaProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(model="ollama/llama3.2", workspace=str(tmp_path)),
         providers=ProvidersConfig(ollama=OllamaConfig()),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, OllamaProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, OllamaProvider)
     assert provider.get_default_model() == "llama3.2"
 
 
@@ -181,13 +191,15 @@ def test_build_provider_explicit_ollama(mock_sdk, tmp_path: Path) -> None:
     mock_sdk.AsyncOpenAI.return_value = object()
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.ollama import OllamaProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(model="ollama/mistral", provider="ollama", workspace=str(tmp_path)),
         providers=ProvidersConfig(ollama=OllamaConfig()),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, OllamaProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, OllamaProvider)
 
 
 def test_build_provider_ollama_missing_config(tmp_path: Path) -> None:
@@ -204,10 +216,12 @@ def test_build_provider_ollama_missing_config(tmp_path: Path) -> None:
 def test_build_provider_openrouter_explicit(tmp_path: Path) -> None:
     from sideclaw.app.factory import _build_provider
     from sideclaw.providers.openrouter import OpenRouterProvider
+    from sideclaw.providers.retry import RetryProvider
 
     config = Config(
         agent=AgentConfig(model="openai/gpt-4o-mini", workspace=str(tmp_path)),
         providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-or-test")),
     )
     provider = _build_provider(config)
-    assert isinstance(provider, OpenRouterProvider)
+    assert isinstance(provider, RetryProvider)
+    assert isinstance(provider._inner, OpenRouterProvider)

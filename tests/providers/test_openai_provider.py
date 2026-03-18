@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sideclaw.providers.openai_provider import OpenAIProvider
@@ -88,16 +89,14 @@ async def test_openai_tool_call_response(mock_sdk):
 
 
 @patch("sideclaw.providers.openai_provider.openai")
-async def test_openai_error_handling(mock_sdk):
+async def test_openai_error_propagates(mock_sdk):
     mock_client = AsyncMock()
     mock_sdk.AsyncOpenAI.return_value = mock_client
     mock_client.chat.completions.create = AsyncMock(side_effect=Exception("Rate limited"))
 
     provider = OpenAIProvider(api_key="sk-test")
-    result = await provider.chat(messages=[{"role": "user", "content": "hi"}])
-
-    assert result.finish_reason == "error"
-    assert "Rate limited" in result.content
+    with pytest.raises(Exception, match="Rate limited"):
+        await provider.chat(messages=[{"role": "user", "content": "hi"}])
 
 
 @patch("sideclaw.providers.openai_provider.openai")

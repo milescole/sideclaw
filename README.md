@@ -160,7 +160,7 @@ Default config path:
 
 Core configuration sections:
 
-- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openai`/`ollama`/`openrouter`)
+- `agent`: model, workspace, token/temperature defaults, memory window, provider selection (`auto`/`anthropic`/`openai`/`ollama`/`openrouter`), retry settings (`retry_max`, `retry_base_delay`, `retry_max_delay`)
 - `providers.anthropic`: API key (for direct Anthropic access)
 - `providers.openai`: API key and optional base URL (for direct OpenAI access)
 - `providers.ollama`: optional base URL (for local Ollama inference, no API key needed)

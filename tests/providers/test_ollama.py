@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sideclaw.providers.ollama import OllamaProvider
@@ -95,7 +96,7 @@ async def test_ollama_tool_call_response(mock_sdk):
 
 
 @patch("sideclaw.providers.ollama.openai")
-async def test_ollama_error_handling(mock_sdk):
+async def test_ollama_error_propagates(mock_sdk):
     mock_client = AsyncMock()
     mock_sdk.AsyncOpenAI.return_value = mock_client
     mock_client.chat.completions.create = AsyncMock(
@@ -103,7 +104,5 @@ async def test_ollama_error_handling(mock_sdk):
     )
 
     provider = OllamaProvider()
-    result = await provider.chat(messages=[{"role": "user", "content": "hi"}])
-
-    assert result.finish_reason == "error"
-    assert "Connection refused" in result.content
+    with pytest.raises(Exception, match="Connection refused"):
+        await provider.chat(messages=[{"role": "user", "content": "hi"}])

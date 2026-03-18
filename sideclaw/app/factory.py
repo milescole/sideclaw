@@ -36,12 +36,16 @@ def _detect_provider(model: str) -> str:
 
 
 def _build_provider(config: Config) -> "LLMProvider":
-    """Build the appropriate LLM provider based on config."""
+    """Build the appropriate LLM provider based on config, wrapped with retry."""
+    from sideclaw.providers.retry import RetryProvider
+
     provider_name = config.agent.provider
     model = config.agent.model
 
     if provider_name == "auto":
         provider_name = _detect_provider(model)
+
+    inner: "LLMProvider"
 
     if provider_name == "anthropic":
         from sideclaw.providers.anthropic import AnthropicProvider
@@ -50,18 +54,18 @@ def _build_provider(config: Config) -> "LLMProvider":
         if cfg is None:
             msg = "Anthropic provider requires providers.anthropic config"
             raise ValueError(msg)
-        return AnthropicProvider(api_key=cfg.api_key, default_model=model)
+        inner = AnthropicProvider(api_key=cfg.api_key, default_model=model)
 
-    if provider_name == "openai":
+    elif provider_name == "openai":
         from sideclaw.providers.openai_provider import OpenAIProvider
 
         cfg = config.providers.openai
         if cfg is None:
             msg = "OpenAI provider requires providers.openai config"
             raise ValueError(msg)
-        return OpenAIProvider(api_key=cfg.api_key, default_model=model, api_base=cfg.api_base)
+        inner = OpenAIProvider(api_key=cfg.api_key, default_model=model, api_base=cfg.api_base)
 
-    if provider_name == "ollama":
+    elif provider_name == "ollama":
         from sideclaw.providers.ollama import OllamaProvider
 
         cfg = config.providers.ollama
@@ -69,21 +73,29 @@ def _build_provider(config: Config) -> "LLMProvider":
             msg = "Ollama provider requires providers.ollama config"
             raise ValueError(msg)
         resolved = model.removeprefix("ollama/")
-        return OllamaProvider(default_model=resolved, api_base=cfg.api_base)
+        inner = OllamaProvider(default_model=resolved, api_base=cfg.api_base)
 
-    if provider_name == "openrouter":
+    elif provider_name == "openrouter":
         from sideclaw.providers.openrouter import OpenRouterProvider
 
         cfg = config.providers.openrouter
         if cfg is None:
             msg = "OpenRouter must be configured"
             raise ValueError(msg)
-        return OpenRouterProvider(
+        inner = OpenRouterProvider(
             api_key=cfg.api_key, default_model=model, api_base=cfg.api_base
         )
 
-    msg = f"Unknown provider: {provider_name}"
-    raise ValueError(msg)
+    else:
+        msg = f"Unknown provider: {provider_name}"
+        raise ValueError(msg)
+
+    return RetryProvider(
+        inner,
+        max_retries=config.agent.retry_max,
+        base_delay=config.agent.retry_base_delay,
+        max_delay=config.agent.retry_max_delay,
+    )
 
 
 def build_runtime(config: Config) -> AppRuntime:

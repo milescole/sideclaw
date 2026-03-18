@@ -50,6 +50,9 @@ class AgentConfig(BaseModel):
     temperature: float = 0.7
     memory_window: int = 50
     provider: str = "auto"
+    retry_max: int = 3
+    retry_base_delay: float = 1.0
+    retry_max_delay: float = 10.0
 
 
 class TelegramConfig(BaseModel):

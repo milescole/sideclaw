@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from sideclaw.providers.anthropic import AnthropicProvider
@@ -221,16 +222,14 @@ def test_anthropic_tool_format_conversion(mock_sdk):
 
 
 @patch("sideclaw.providers.anthropic.anthropic")
-async def test_anthropic_error_handling(mock_sdk):
+async def test_anthropic_error_propagates(mock_sdk):
     mock_client = AsyncMock()
     mock_sdk.AsyncAnthropic.return_value = mock_client
     mock_client.messages.create = AsyncMock(side_effect=Exception("API rate limit"))
 
     provider = AnthropicProvider(api_key="sk-ant-test")
-    result = await provider.chat(messages=[{"role": "user", "content": "hi"}])
-
-    assert result.finish_reason == "error"
-    assert "API rate limit" in result.content
+    with pytest.raises(Exception, match="API rate limit"):
+        await provider.chat(messages=[{"role": "user", "content": "hi"}])
 
 
 @patch("sideclaw.providers.anthropic.anthropic")

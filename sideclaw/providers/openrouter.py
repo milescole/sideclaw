@@ -3,7 +3,6 @@
 from typing import Any
 
 from litellm import acompletion
-from loguru import logger
 
 from sideclaw.providers.base import LLMProvider, LLMResponse, ToolCallRequest
 
@@ -44,13 +43,8 @@ class OpenRouterProvider(LLMProvider):
         if tools:
             kwargs["tools"] = tools
 
-        try:
-            response = await acompletion(**kwargs)
-            return self._parse_response(response)
-        except Exception as e:  # noqa: BLE001
-            # Provider boundary: convert any upstream SDK/network failure into an error response.
-            logger.error(f"LLM call failed: {e}")
-            return LLMResponse(content=f"Error: {e}", finish_reason="error")
+        response = await acompletion(**kwargs)
+        return self._parse_response(response)
 
     def get_default_model(self) -> str:
         return self._default_model

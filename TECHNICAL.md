@@ -29,7 +29,7 @@ The runtime now exposes an explicit run boundary:
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
 | Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
-| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/models.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/ollama.py`, `sideclaw/providers/openrouter.py` | LLM abstraction, model registry, and Anthropic, OpenAI, Ollama, and OpenRouter implementations |
+| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/models.py`, `sideclaw/providers/retry.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/ollama.py`, `sideclaw/providers/openrouter.py` | LLM abstraction, model registry, retry wrapper, and Anthropic, OpenAI, Ollama, and OpenRouter implementations |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools, registry, and construction via `build_default_tool_registry()` |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
@@ -268,6 +268,20 @@ Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py
 
 Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass auto-detection.
 
+### Retry Wrapper
+
+`RetryProvider` in `sideclaw/providers/retry.py` wraps every inner provider with automatic retry
+and exponential backoff. Individual providers let exceptions propagate; `RetryProvider` handles them.
+
+- Transient error detection via `status_code` attribute (429, 500, 502, 503, 504) and string
+  marker matching (`"rate limit"`, `"overloaded"`, `"timeout"`, etc.)
+- Exponential backoff with ±25% jitter: `min(base_delay * 2^attempt, max_delay) ± 25%`
+- Image-unsupported error fallback: strips `image_url` content blocks and retries
+- Non-transient errors are converted to `LLMResponse(finish_reason="error")` immediately
+- After exhausting retries, returns `LLMResponse(finish_reason="error")` instead of raising
+- Configurable via `agent.retry_max` (default 3), `agent.retry_base_delay` (default 1.0s),
+  `agent.retry_max_delay` (default 10.0s)
+
 ### AnthropicProvider
 
 - Uses the official `anthropic` SDK (`AsyncAnthropic`)
@@ -275,7 +289,7 @@ Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass a
 - Converts OpenAI-style tool definitions to Anthropic `input_schema` format
 - Converts `tool_use` / `tool_result` blocks between OpenAI and Anthropic conventions
 - Maps `stop_reason`: `end_turn` → `stop`, `tool_use` → `tool_calls`, `max_tokens` → `length`
-- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+- Lets exceptions propagate to `RetryProvider`
 
 ### OpenAIProvider
 
@@ -283,7 +297,7 @@ Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass a
 - Messages pass through in native OpenAI format with key sanitization
 - Tool definitions pass through as-is (OpenAI native format)
 - Supports custom `api_base` for compatible endpoints
-- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+- Lets exceptions propagate to `RetryProvider`
 
 ### OllamaProvider
 
@@ -291,7 +305,7 @@ Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass a
 - No API key required — uses a dummy `"ollama"` key
 - Same response parsing as OpenAIProvider (OpenAI-compatible format)
 - The `ollama/` model prefix is stripped before passing to the provider
-- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+- Lets exceptions propagate to `RetryProvider`
 
 ### OpenRouterProvider
 
@@ -299,12 +313,12 @@ Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass a
 - Prefixes models with `openrouter/` when needed
 - Sanitizes message keys before API call
 - Converts LiteLLM tool call payloads into internal `ToolCallRequest`
-- Converts provider/SDK exceptions into `LLMResponse(finish_reason="error")`
+- Lets exceptions propagate to `RetryProvider`
 
 ## 11. Failure Handling and Operational Notes
 
 - Tool failures are isolated and surfaced as tool result text, not process crashes.
-- LLM provider failures return an explicit error response.
+- LLM provider failures are retried by `RetryProvider` for transient errors, then converted to error responses.
 - Gateway processing wraps message handling and logs exceptions.
 - `exec` tool has timeout control but executes shell commands directly; treat as high-trust environment capability.
 - Cron execution failures are stored on the job record and retried on the next matching schedule.
