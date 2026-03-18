@@ -30,14 +30,9 @@ class AppRuntime:
 
 def _detect_provider(model: str) -> str:
     """Infer the provider name from the model identifier."""
-    lower = model.lower()
-    if lower.startswith("claude"):
-        return "anthropic"
-    if any(lower.startswith(p) for p in ("gpt-", "o1-", "o3-", "o4-")):
-        return "openai"
-    if lower.startswith("ollama/"):
-        return "ollama"
-    return "openrouter"
+    from sideclaw.providers.models import ModelRegistry
+
+    return ModelRegistry().detect_provider(model)
 
 
 def _build_provider(config: Config) -> "LLMProvider":

@@ -19,7 +19,7 @@ class AnthropicProvider(LLMProvider):
     def __init__(
         self,
         api_key: str,
-        default_model: str = "claude-opus-4-20250918",
+        default_model: str = "claude-opus-4-6",
     ) -> None:
         self._api_key = api_key
         self._default_model = default_model

@@ -29,7 +29,7 @@ The runtime now exposes an explicit run boundary:
 | Message bus | `sideclaw/bus/queue.py` | Async inbound/outbound queue decoupling channel adapters from gateway ingress |
 | Runtime loop | `sideclaw/runtime/loop.py`, `sideclaw/runtime/execution/*` | `RuntimeLoop` orchestration shell plus extracted prepare, LLM, tool, persistence, and output execution helpers |
 | Prompt builder | `sideclaw/agent/prompt_builder.py` | Builds system prompt from base docs, workspace context, memory, and runtime info |
-| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/ollama.py`, `sideclaw/providers/openrouter.py` | LLM abstraction with Anthropic, OpenAI, Ollama, and OpenRouter implementations |
+| Provider layer | `sideclaw/providers/base.py`, `sideclaw/providers/models.py`, `sideclaw/providers/anthropic.py`, `sideclaw/providers/openai_provider.py`, `sideclaw/providers/ollama.py`, `sideclaw/providers/openrouter.py` | LLM abstraction, model registry, and Anthropic, OpenAI, Ollama, and OpenRouter implementations |
 | Tool runtime | `sideclaw/tools/*` | Built-in tools, registry, and construction via `build_default_tool_registry()` |
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
@@ -247,13 +247,24 @@ This keeps the CLI surface thin while preserving a dedicated place for future ga
 
 ## 10. Provider Layer
 
-Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py`. When
-`agent.provider` is `"auto"` (the default), the factory infers the provider from the model name:
+### Model Registry
 
-- `claude*` → Anthropic
-- `gpt-*`, `o1-*`, `o3-*`, `o4-*` → OpenAI
-- `ollama/*` → Ollama
-- Unrecognized / prefixed models → OpenRouter (fallback)
+`ModelRegistry` in `sideclaw/providers/models.py` is the single source of truth for model metadata
+and provider detection. Each registered `ModelInfo` carries `id`, `provider`, `context_window`,
+`max_output_tokens`, and capability flags (`supports_tools`, `supports_vision`, `supports_streaming`).
+
+Detection strategy (used by `_detect_provider()` in the factory):
+
+1. **Exact match** in registry → return `ModelInfo.provider`
+2. **Prefix match** (`claude` → anthropic, `gpt-`/`o1-`/`o3-`/`o4-` → openai, `ollama/` → ollama)
+3. **Fallback** → openrouter
+
+Custom models can be registered via `ModelRegistry.register()`.
+
+### Provider Selection
+
+Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py`. When
+`agent.provider` is `"auto"` (the default), the factory delegates to `ModelRegistry.detect_provider()`.
 
 Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass auto-detection.
 
@@ -337,8 +348,9 @@ uv run pytest
 ### Add a new provider
 
 1. Implement `LLMProvider` in `sideclaw/providers/`
-2. Extend config schema for provider credentials/options
-3. Add detection logic and instantiation branch in `_build_provider()` / `_detect_provider()` in `sideclaw/app/factory.py`
+2. Register known models in `ModelRegistry._register_defaults()` in `sideclaw/providers/models.py`
+3. Extend config schema for provider credentials/options
+4. Add instantiation branch in `_build_provider()` in `sideclaw/app/factory.py`
 
 ### Add a new channel
 

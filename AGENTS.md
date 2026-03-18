@@ -114,6 +114,7 @@ tests/
 - `sideclaw/cli/commands/`: command implementation modules for onboarding, status, agent, cron, and gateway behavior.
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
 - `sideclaw/app/factory.py`: shared runtime construction and provider routing (`_build_provider` / `_detect_provider`) for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
+- `sideclaw/providers/models.py`: centralized `ModelRegistry` and `ModelInfo` — single source of truth for model metadata and provider detection. Add new models here rather than hardcoding prefix matching.
 - `sideclaw/providers/anthropic.py`: direct Anthropic provider via official SDK with system prompt extraction and tool format conversion.
 - `sideclaw/providers/openai_provider.py`: direct OpenAI provider via official SDK with native message/tool format.
 - `sideclaw/providers/ollama.py`: Ollama provider via OpenAI-compatible endpoint for local model inference.
@@ -164,9 +165,10 @@ If you change canonical doc names, routing rules, or scaffold behavior, update t
 ### Adding a provider
 
 1. Implement the `LLMProvider` contract in `sideclaw/providers/`.
-2. Extend config loading/schema.
-3. Add detection logic and instantiation branch in `_build_provider()` / `_detect_provider()` in `sideclaw/app/factory.py`.
-4. Verify tool-call parsing and error-path behavior in tests.
+2. Register known models in `ModelRegistry._register_defaults()` in `sideclaw/providers/models.py`.
+3. Extend config loading/schema.
+4. Add instantiation branch in `_build_provider()` in `sideclaw/app/factory.py`.
+5. Verify tool-call parsing and error-path behavior in tests.
 
 ### Adding or changing workspace skills
 
