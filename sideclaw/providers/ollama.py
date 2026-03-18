@@ -1,10 +1,11 @@
 """Ollama LLM provider using the OpenAI-compatible endpoint."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 import openai
 
-from sideclaw.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk, ToolCallRequest
 
 
 class OllamaProvider(LLMProvider):
@@ -44,6 +45,73 @@ class OllamaProvider(LLMProvider):
 
         response = await self._client.chat.completions.create(**kwargs)
         return self._parse_response(response)
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream response chunks from Ollama's OpenAI-compatible endpoint."""
+        model = model or self._default_model
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": self._sanitize_messages(messages),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        stream = await self._client.chat.completions.create(**kwargs)
+        tool_calls: dict[int, dict[str, str]] = {}
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
+
+            if delta.content:
+                yield StreamChunk(content=delta.content)
+
+            if delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index
+                    if idx not in tool_calls:
+                        tool_calls[idx] = {
+                            "id": tc_delta.id or "",
+                            "name": tc_delta.function.name or "" if tc_delta.function else "",
+                            "arguments": "",
+                        }
+                    if tc_delta.function and tc_delta.function.arguments:
+                        tool_calls[idx]["arguments"] += tc_delta.function.arguments
+
+            if finish_reason:
+                final_tool_calls = None
+                if tool_calls:
+                    final_tool_calls = [
+                        ToolCallRequest(
+                            id=tc["id"], name=tc["name"], arguments=tc["arguments"]
+                        )
+                        for tc in tool_calls.values()
+                    ]
+                usage_data = None
+                if hasattr(chunk, "usage") and chunk.usage:
+                    usage_data = {
+                        "prompt_tokens": chunk.usage.prompt_tokens,
+                        "completion_tokens": chunk.usage.completion_tokens,
+                    }
+                yield StreamChunk(
+                    finish_reason=finish_reason,
+                    tool_calls=final_tool_calls,
+                    usage=usage_data,
+                )
 
     def get_default_model(self) -> str:
         return self._default_model

@@ -1,10 +1,11 @@
 """OpenRouter LLM provider using LiteLLM."""
 
+from collections.abc import AsyncIterator
 from typing import Any
 
 from litellm import acompletion
 
-from sideclaw.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk, ToolCallRequest
 
 
 class OpenRouterProvider(LLMProvider):
@@ -45,6 +46,80 @@ class OpenRouterProvider(LLMProvider):
 
         response = await acompletion(**kwargs)
         return self._parse_response(response)
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream response chunks via OpenRouter/LiteLLM."""
+        model = model or self._default_model
+        resolved = f"openrouter/{model}" if not model.startswith("openrouter/") else model
+
+        kwargs: dict[str, Any] = {
+            "model": resolved,
+            "messages": self._sanitize_messages(messages),
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "api_key": self._api_key,
+            "api_base": self._api_base,
+            "stream": True,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        stream = await acompletion(**kwargs)
+        tool_calls: dict[int, dict[str, str]] = {}
+
+        async for chunk in stream:
+            if not chunk.choices:
+                continue
+
+            delta = chunk.choices[0].delta
+            finish_reason = chunk.choices[0].finish_reason
+
+            if hasattr(delta, "content") and delta.content:
+                yield StreamChunk(content=delta.content)
+
+            if hasattr(delta, "tool_calls") and delta.tool_calls:
+                for tc_delta in delta.tool_calls:
+                    idx = tc_delta.index if hasattr(tc_delta, "index") else 0
+                    if idx not in tool_calls:
+                        tool_calls[idx] = {
+                            "id": getattr(tc_delta, "id", "") or "",
+                            "name": getattr(tc_delta.function, "name", "") or ""
+                            if hasattr(tc_delta, "function")
+                            else "",
+                            "arguments": "",
+                        }
+                    if hasattr(tc_delta, "function") and tc_delta.function:
+                        args = getattr(tc_delta.function, "arguments", "")
+                        if args:
+                            tool_calls[idx]["arguments"] += args
+
+            if finish_reason:
+                final_tool_calls = None
+                if tool_calls:
+                    final_tool_calls = [
+                        ToolCallRequest(
+                            id=tc["id"], name=tc["name"], arguments=tc["arguments"]
+                        )
+                        for tc in tool_calls.values()
+                    ]
+                usage_data = None
+                if hasattr(chunk, "usage") and chunk.usage:
+                    usage_data = {
+                        "prompt_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                        "completion_tokens": getattr(chunk.usage, "completion_tokens", 0),
+                    }
+                yield StreamChunk(
+                    finish_reason=finish_reason,
+                    tool_calls=final_tool_calls,
+                    usage=usage_data,
+                )
 
     def get_default_model(self) -> str:
         return self._default_model

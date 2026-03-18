@@ -268,6 +268,22 @@ Provider selection is handled by `_build_provider()` in `sideclaw/app/factory.py
 
 Explicit values (`"anthropic"`, `"openai"`, `"ollama"`, `"openrouter"`) bypass auto-detection.
 
+### Streaming
+
+All providers implement `chat_stream()` which yields `StreamChunk` objects as tokens arrive.
+The base `LLMProvider` class provides a default fallback that calls `chat()` and yields a single
+chunk. `RetryProvider` wraps streaming with the same retry logic, restarting the full stream on
+transient errors.
+
+Runtime wiring:
+- `invoke_llm_stream()` in `llm_driver.py` yields chunks from the provider
+- `run_provider_tool_loop()` accepts an optional `on_stream_chunk` callback; when provided, text
+  chunks are forwarded to the callback in real-time while tool calls are processed normally
+- `RuntimeService.run_stream()` passes a chunk callback through the loop
+- CLI agent uses `print_streaming_token()` to display tokens incrementally
+
+Streaming is enabled by default via `agent.streaming` and can be disabled for non-interactive use.
+
 ### Retry Wrapper
 
 `RetryProvider` in `sideclaw/providers/retry.py` wraps every inner provider with automatic retry

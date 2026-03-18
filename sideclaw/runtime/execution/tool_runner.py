@@ -1,5 +1,6 @@
 """Tool iteration helpers for runtime execution."""
 
+from collections.abc import Callable
 from typing import Any
 
 import json_repair
@@ -15,7 +16,8 @@ from sideclaw.runtime.approval import (
     get_pending,
     set_pending,
 )
-from sideclaw.runtime.execution.llm_driver import invoke_llm
+from sideclaw.providers.base import StreamChunk, ToolCallRequest
+from sideclaw.runtime.execution.llm_driver import invoke_llm, invoke_llm_stream
 from sideclaw.runtime.models.approval import (
     ApprovalScope,
     ToolExecutionOutcome,
@@ -105,6 +107,45 @@ async def execute_tool_call(
     )
 
 
+OnStreamChunk = Callable[[StreamChunk], None] | None
+
+
+async def _collect_stream(
+    *,
+    provider: LLMProvider,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]] | None,
+    config: Config,
+    on_chunk: OnStreamChunk,
+) -> LLMResponse:
+    """Stream from the provider, forwarding text chunks to callback, returning assembled response."""
+    text_parts: list[str] = []
+    final_tool_calls: list[ToolCallRequest] = []
+    finish_reason = "stop"
+    usage: dict[str, int] = {}
+
+    async for chunk in invoke_llm_stream(
+        provider=provider, messages=messages, tools=tools, config=config
+    ):
+        if chunk.content and on_chunk:
+            on_chunk(chunk)
+        if chunk.content:
+            text_parts.append(chunk.content)
+        if chunk.tool_calls:
+            final_tool_calls = chunk.tool_calls
+        if chunk.finish_reason:
+            finish_reason = chunk.finish_reason
+        if chunk.usage:
+            usage = chunk.usage
+
+    return LLMResponse(
+        content="".join(text_parts) if text_parts else None,
+        tool_calls=final_tool_calls,
+        finish_reason=finish_reason,
+        usage=usage,
+    )
+
+
 async def run_provider_tool_loop(
     *,
     session: Session,
@@ -113,17 +154,27 @@ async def run_provider_tool_loop(
     registry: ToolRegistry,
     config: Config,
     max_tool_iterations: int,
+    on_stream_chunk: OnStreamChunk = None,
 ) -> str:
     """Drive the provider/tool loop until text output or pending approval."""
     tools = registry.get_definitions() or None
 
     for _iteration in range(max_tool_iterations):
-        response = await invoke_llm(
-            provider=provider,
-            messages=messages,
-            tools=tools,
-            config=config,
-        )
+        if on_stream_chunk is not None:
+            response = await _collect_stream(
+                provider=provider,
+                messages=messages,
+                tools=tools,
+                config=config,
+                on_chunk=on_stream_chunk,
+            )
+        else:
+            response = await invoke_llm(
+                provider=provider,
+                messages=messages,
+                tools=tools,
+                config=config,
+            )
 
         if response.finish_reason == "error":
             content = response.content or "An error occurred."

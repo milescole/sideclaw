@@ -1,6 +1,9 @@
 """Runtime service facade."""
 
+from collections.abc import Callable
+
 from sideclaw.bus.messages import InboundMessage
+from sideclaw.providers.base import StreamChunk
 from sideclaw.runtime.execution.output import build_text_output
 from sideclaw.runtime.loop import RuntimeLoop
 from sideclaw.runtime.models.approval import ApprovalScope
@@ -27,6 +30,43 @@ class RuntimeService:
 
         message = self._request_to_message(request)
         response = await self._agent_loop.process_message(message)
+
+        session = self._session_manager.get_or_create(request.session_key)
+        status = (
+            RunStatus.pending_approval
+            if session.pending_approval is not None
+            else RunStatus.completed
+        )
+        if status == RunStatus.pending_approval:
+            state.phase = RunPhase.waiting_for_approval
+            state.add_event(
+                RuntimeEvent(
+                    kind=RuntimeEventKind.approval_required,
+                    run_id=context.run_id,
+                )
+            )
+
+        state.add_output(build_text_output(response.text))
+        state.add_event(
+            RuntimeEvent(
+                kind=RuntimeEventKind.run_completed,
+                run_id=context.run_id,
+            )
+        )
+        return state.finish(status=status, output_text=response.text)
+
+    async def run_stream(
+        self,
+        request: RunRequest,
+        on_stream_chunk: Callable[[StreamChunk], None],
+    ) -> RunResult:
+        """Execute a runtime request with streaming text chunks."""
+        context = RuntimeContext.from_request(request)
+        state = RuntimeState(request=request, context=context, phase=RunPhase.running)
+        state.add_event(RuntimeEvent(kind=RuntimeEventKind.run_started, run_id=context.run_id))
+
+        message = self._request_to_message(request)
+        response = await self._agent_loop.process_message_stream(message, on_stream_chunk)
 
         session = self._session_manager.get_or_create(request.session_key)
         status = (

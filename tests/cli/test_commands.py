@@ -564,6 +564,15 @@ async def test_run_agent_uses_app_runtime_for_single_message(tmp_path: Path) -> 
 
             return Result()
 
+        async def run_stream(self, request, on_chunk):
+            self.requests.append(request)
+            on_chunk(type("Chunk", (), {"content": "hello back"})())
+
+            class Result:
+                output_text = "hello back"
+
+            return Result()
+
     runtime = type(
         "StubRuntime",
         (),
@@ -577,7 +586,7 @@ async def test_run_agent_uses_app_runtime_for_single_message(tmp_path: Path) -> 
     with patch.object(agent_surface, "build_cli_runtime", return_value=runtime) as build_runtime:
         with patch.object(agent_surface, "set_clarify_callback", return_value="token") as set_cb:
             with patch.object(agent_surface, "reset_clarify_callback") as reset_cb:
-                with patch.object(agent_surface, "render_agent_markdown", return_value="rendered"):
+                with patch.object(agent_surface, "print_streaming_token"):
                     with patch.object(agent_surface, "print_line") as print_line:
                         await agent_surface.run_agent(config, "hello")
 
@@ -586,7 +595,6 @@ async def test_run_agent_uses_app_runtime_for_single_message(tmp_path: Path) -> 
     reset_cb.assert_called_once_with("token")
     assert len(runtime.runtime_service.requests) == 1
     assert runtime.runtime_service.requests[0].input_text == "hello"
-    print_line.assert_called_once_with("rendered")
 
 
 async def test_run_gateway_uses_app_runtime_for_configured_channels(tmp_path: Path) -> None:

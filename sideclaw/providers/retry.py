@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import asyncio
 import random
+from collections.abc import AsyncIterator
 from typing import Any
 
 from loguru import logger
 
-from sideclaw.providers.base import LLMProvider, LLMResponse
+from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk
 
 TRANSIENT_STATUS_CODES = {429, 500, 502, 503, 504}
 
@@ -126,6 +127,54 @@ class RetryProvider(LLMProvider):
         return LLMResponse(  # pragma: no cover
             content="Error: max retries exceeded", finish_reason="error"
         )
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream from the inner provider with retry logic.
+
+        On retry, the full stream is restarted from the beginning.
+        """
+        for attempt in range(self._max_retries + 1):
+            try:
+                async for chunk in self._inner.chat_stream(
+                    messages, tools, model, max_tokens, temperature,
+                ):
+                    yield chunk
+                return
+            except Exception as e:  # noqa: BLE001
+                if attempt == self._max_retries:
+                    logger.error(
+                        f"LLM stream failed after {self._max_retries + 1} attempts: {e}"
+                    )
+                    yield StreamChunk(
+                        content=f"Error: {e}", finish_reason="error"
+                    )
+                    return
+                if is_image_unsupported(e):
+                    logger.warning(f"Image unsupported, stripping image blocks: {e}")
+                    messages = _strip_image_blocks(messages)
+                    continue
+                if not is_transient(e):
+                    logger.error(f"Non-transient LLM stream error: {e}")
+                    yield StreamChunk(
+                        content=f"Error: {e}", finish_reason="error"
+                    )
+                    return
+                base = min(self._base_delay * 2**attempt, self._max_delay)
+                jitter = base * 0.25
+                delay = base + random.uniform(-jitter, jitter)
+                delay = max(0.1, delay)
+                logger.warning(
+                    f"Transient stream error (attempt {attempt + 1}/{self._max_retries + 1}), "
+                    f"retrying in {delay:.1f}s: {e}"
+                )
+                await asyncio.sleep(delay)
 
     def get_default_model(self) -> str:
         """Delegate to inner provider."""

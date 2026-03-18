@@ -1,5 +1,6 @@
 """Runtime loop: receive message, call LLM, execute tools, respond."""
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -8,7 +9,7 @@ from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
-from sideclaw.providers.base import LLMProvider, LLMResponse
+from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk
 from sideclaw.runtime.approval import get_pending
 from sideclaw.runtime.context import (
     reset_tool_runtime_context,
@@ -136,6 +137,56 @@ class RuntimeLoop:
         finally:
             reset_tool_runtime_context(context_token)
 
+    async def process_message_stream(
+        self,
+        msg: InboundMessage,
+        on_stream_chunk: Callable[[StreamChunk], None],
+    ) -> OutboundMessage:
+        """Process a message with streaming text chunks forwarded to the callback."""
+        prepared = prepare_new_run(
+            msg,
+            session_manager=self._session_manager,
+            prompt_builder=self._context,
+            history_limit=self._session_history_limit(),
+        )
+        runtime_context = prepared.runtime_context
+        context_token = bind_tool_runtime_context(runtime_context)
+
+        try:
+            async with prepared.lock:
+                session = prepared.session
+                messages = prepared.messages
+                session.messages.append({"role": "user", "content": msg.text})
+                text = await self._run_provider_loop(
+                    session, messages, on_stream_chunk=on_stream_chunk
+                )
+
+                await persist_session_state(
+                    session=session,
+                    session_manager=self._session_manager,
+                    config=self._config,
+                    provider=self._provider,
+                    memory_store=self._memory,
+                    workspace_docs=self._workspace_docs,
+                )
+
+                result = RunResult(
+                    run_id=runtime_context.run_id,
+                    status=RunStatus.completed,
+                    output_text=text,
+                    surface=runtime_context.surface,
+                    conversation_id=runtime_context.conversation_id,
+                )
+                return build_outbound_message(
+                    output_text=result.output_text,
+                    surface=result.surface,
+                    conversation_id=result.conversation_id,
+                    fallback_channel=msg.channel,
+                    fallback_chat_id=msg.chat_id,
+                )
+        finally:
+            reset_tool_runtime_context(context_token)
+
     async def resume_pending_approval(
         self,
         msg: InboundMessage,
@@ -183,6 +234,7 @@ class RuntimeLoop:
         self,
         session: Session,
         messages: list[dict[str, Any]],
+        on_stream_chunk: "Callable[[StreamChunk], None] | None" = None,
     ) -> str:
         """Drive the provider/tool loop until text output or pending approval."""
         return await run_provider_tool_loop(
@@ -192,6 +244,7 @@ class RuntimeLoop:
             registry=self._registry,
             config=self._config,
             max_tool_iterations=MAX_TOOL_ITERATIONS,
+            on_stream_chunk=on_stream_chunk,
         )
 
     async def _execute_tool_call(

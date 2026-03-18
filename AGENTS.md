@@ -115,7 +115,7 @@ tests/
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
 - `sideclaw/app/factory.py`: shared runtime construction and provider routing (`_build_provider` / `_detect_provider`) for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
 - `sideclaw/providers/models.py`: centralized `ModelRegistry` and `ModelInfo` — single source of truth for model metadata and provider detection. Add new models here rather than hardcoding prefix matching.
-- `sideclaw/providers/retry.py`: `RetryProvider` decorator wrapping all providers with exponential backoff, transient error detection, and image-unsupported fallback. Individual providers should let exceptions propagate.
+- `sideclaw/providers/retry.py`: `RetryProvider` decorator wrapping all providers with exponential backoff, transient error detection, and image-unsupported fallback. Supports both `chat()` and `chat_stream()`. Individual providers should let exceptions propagate.
 - `sideclaw/providers/anthropic.py`: direct Anthropic provider via official SDK with system prompt extraction, tool format conversion, and prompt caching support.
 - `sideclaw/providers/openai_provider.py`: direct OpenAI provider via official SDK with native message/tool format.
 - `sideclaw/providers/ollama.py`: Ollama provider via OpenAI-compatible endpoint for local model inference.

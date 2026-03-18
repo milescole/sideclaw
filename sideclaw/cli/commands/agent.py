@@ -6,7 +6,7 @@ from typing import Any
 import typer
 
 from sideclaw.app.cli import build_cli_runtime
-from sideclaw.cli.render.console import print_line, prompt_input
+from sideclaw.cli.render.console import print_line, print_streaming_token, prompt_input
 from sideclaw.cli.render.formatting import (
     build_agent_header_lines,
     build_clarify_lines,
@@ -17,6 +17,7 @@ from sideclaw.cli.render.formatting import (
 )
 from sideclaw.config.loader import get_config_path, load_config
 from sideclaw.config.schema import Config
+from sideclaw.providers.base import StreamChunk
 from sideclaw.runtime.clarify import reset_clarify_callback, set_clarify_callback
 from sideclaw.runtime.models.requests import RunRequest
 
@@ -44,11 +45,30 @@ def agent(
     asyncio.run(run_agent(config, message))
 
 
+def _on_stream_chunk(chunk: StreamChunk) -> None:
+    """Print streaming text chunks to the CLI."""
+    if chunk.content:
+        print_streaming_token(chunk.content)
+
+
+async def _run_request(
+    runtime_service: Any,
+    request: RunRequest,
+    *,
+    streaming: bool,
+) -> Any:
+    """Execute a run request, optionally streaming."""
+    if streaming:
+        return await runtime_service.run_stream(request, _on_stream_chunk)
+    return await runtime_service.run(request)
+
+
 async def run_agent(config: Config, single_message: str | None = None) -> None:
     """Run the agent loop in CLI mode."""
     runtime = build_cli_runtime(config)
     runtime_service = runtime.runtime_service
     session_manager = runtime.session_manager
+    streaming = config.agent.streaming
 
     def _cli_clarify(question: str, choices: list[str] | None) -> str:
         for line in build_clarify_lines(question, choices):
@@ -58,17 +78,22 @@ async def run_agent(config: Config, single_message: str | None = None) -> None:
     if single_message:
         clarify_token = set_clarify_callback(_cli_clarify)
         try:
-            result = await runtime_service.run(
+            result = await _run_request(
+                runtime_service,
                 RunRequest(
                     input_text=single_message,
                     surface="cli",
                     conversation_id="cli",
                     user_id="cli",
-                )
+                ),
+                streaming=streaming,
             )
         finally:
             reset_clarify_callback(clarify_token)
-        print_line(render_agent_markdown(result.output_text))
+        if not streaming:
+            print_line(render_agent_markdown(result.output_text))
+        else:
+            print_line()
         return
 
     for line in build_agent_header_lines(config.agent.model):
@@ -94,16 +119,21 @@ async def run_agent(config: Config, single_message: str | None = None) -> None:
 
         clarify_token = set_clarify_callback(_cli_clarify)
         try:
-            result = await runtime_service.run(
+            result = await _run_request(
+                runtime_service,
                 RunRequest(
                     input_text=user_input,
                     surface="cli",
                     conversation_id="cli",
                     user_id="cli",
-                )
+                ),
+                streaming=streaming,
             )
         finally:
             reset_clarify_callback(clarify_token)
-        print_line()
-        print_line(render_agent_markdown(result.output_text))
+        if streaming:
+            print_line()
+        else:
+            print_line()
+            print_line(render_agent_markdown(result.output_text))
         print_line()

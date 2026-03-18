@@ -1,11 +1,12 @@
 """Anthropic LLM provider using the official SDK."""
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any, ClassVar
 
 import anthropic
 
-from sideclaw.providers.base import LLMProvider, LLMResponse, ToolCallRequest
+from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk, ToolCallRequest
 
 
 class AnthropicProvider(LLMProvider):
@@ -52,6 +53,79 @@ class AnthropicProvider(LLMProvider):
 
         response = await self._client.messages.create(**kwargs)
         return self._parse_response(response)
+
+    async def chat_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        model: str | None = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+    ) -> AsyncIterator[StreamChunk]:
+        """Stream response chunks from the Anthropic Messages API."""
+        model = model or self._default_model
+        system, converted_messages = self._convert_messages(messages)
+
+        kwargs: dict[str, Any] = {
+            "model": model,
+            "messages": converted_messages,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        }
+        if system is not None:
+            kwargs["system"] = system
+        if tools:
+            kwargs["tools"] = self._convert_tools(tools)
+
+        tool_calls: dict[int, dict[str, Any]] = {}
+
+        async with self._client.messages.stream(**kwargs) as stream:
+            async for event in stream:
+                if event.type == "content_block_start":
+                    block = event.content_block
+                    if block.type == "tool_use":
+                        tool_calls[event.index] = {
+                            "id": block.id,
+                            "name": block.name,
+                            "arguments": "",
+                        }
+                elif event.type == "content_block_delta":
+                    delta = event.delta
+                    if delta.type == "text_delta":
+                        yield StreamChunk(content=delta.text)
+                    elif delta.type == "input_json_delta":
+                        if event.index in tool_calls:
+                            tool_calls[event.index]["arguments"] += delta.partial_json
+
+            final = await stream.get_final_message()
+
+        # Emit final chunk with tool calls and usage
+        final_tool_calls = None
+        if tool_calls:
+            final_tool_calls = [
+                ToolCallRequest(
+                    id=tc["id"], name=tc["name"], arguments=tc["arguments"]
+                )
+                for tc in tool_calls.values()
+            ]
+
+        finish_reason = self._STOP_REASON_MAP.get(final.stop_reason, "stop")
+        usage: dict[str, int] = {
+            "prompt_tokens": final.usage.input_tokens,
+            "completion_tokens": final.usage.output_tokens,
+        }
+        cache_creation = getattr(final.usage, "cache_creation_input_tokens", None)
+        cache_read = getattr(final.usage, "cache_read_input_tokens", None)
+        if cache_creation is not None:
+            usage["cache_creation_tokens"] = cache_creation
+        if cache_read is not None:
+            usage["cache_read_tokens"] = cache_read
+
+        yield StreamChunk(
+            finish_reason=finish_reason,
+            tool_calls=final_tool_calls,
+            usage=usage,
+        )
 
     def get_default_model(self) -> str:
         return self._default_model
