@@ -102,3 +102,14 @@ def test_exec_destructive_command_requires_explicit_approval(workspace):
     requirement = tool.approval_requirement(command="git reset --hard HEAD~1")
     assert requirement == ApprovalRequirement.always
     assert tool.approval_key(command="git reset --hard HEAD~1") == "shell:destructive"
+
+
+async def test_exec_blocks_internal_url(workspace, monkeypatch):
+    monkeypatch.setattr(
+        "sideclaw.tools.shell.contains_internal_url",
+        lambda cmd: "169.254.169.254" in cmd,
+    )
+    tool = ExecTool(workspace=workspace, timeout=10)
+    result = await tool.execute(command="curl http://169.254.169.254/latest/meta-data/")
+    assert "blocked" in result.lower()
+    assert "internal address" in result.lower()

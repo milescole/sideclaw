@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sideclaw.runtime.models.approval import ApprovalRequirement
+from sideclaw.security.network import contains_internal_url
 from sideclaw.tools.base import Tool, truncate_tool_output
 
 _SAFE_ENV_PREFIXES = (
@@ -175,6 +176,9 @@ class ExecTool(Tool):
         for pattern, description in _DEFAULT_DENY_PATTERNS:
             if pattern.search(lowered):
                 return f"Error: Command blocked by safety guard ({description})"
+
+        if contains_internal_url(normalized):
+            return "Error: Command blocked by safety guard (URL targeting internal address)"
 
         for token in self._tokenize_command(normalized):
             path_error = self._validate_path_token(token)

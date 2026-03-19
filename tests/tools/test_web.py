@@ -8,6 +8,8 @@ import httpx
 from sideclaw.config.schema import WebSearchProvider
 from sideclaw.tools.web import WebFetchTool, WebSearchTool
 
+_allow_all = lambda url: (True, "")  # noqa: E731
+
 
 class _FakeResponse:
     def __init__(
@@ -160,6 +162,8 @@ async def test_web_fetch_extracts_html_with_fallback_markdown(monkeypatch) -> No
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("sideclaw.tools.web.validate_url_target", _allow_all)
+    monkeypatch.setattr("sideclaw.tools.web.validate_resolved_url", _allow_all)
     monkeypatch.delitem(sys.modules, "readability", raising=False)
     tool = WebFetchTool()
 
@@ -168,6 +172,7 @@ async def test_web_fetch_extracts_html_with_fallback_markdown(monkeypatch) -> No
     parsed = json.loads(result)
     assert parsed["success"] is True
     assert parsed["extractor"] == "fallback"
+    assert "[External content" in parsed["text"]
     assert "# Hello" in parsed["text"]
     assert "[Docs](https://example.com/docs)" in parsed["text"]
 
@@ -180,6 +185,8 @@ async def test_web_fetch_formats_json_payload(monkeypatch) -> None:
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("sideclaw.tools.web.validate_url_target", _allow_all)
+    monkeypatch.setattr("sideclaw.tools.web.validate_resolved_url", _allow_all)
     tool = WebFetchTool(max_chars=500)
 
     result = await tool.execute(url="https://example.com/data.json")
@@ -187,6 +194,7 @@ async def test_web_fetch_formats_json_payload(monkeypatch) -> None:
     parsed = json.loads(result)
     assert parsed["success"] is True
     assert parsed["extractor"] == "json"
+    assert "[External content" in parsed["text"]
     assert '"name": "sideclaw"' in parsed["text"]
 
 
@@ -208,6 +216,8 @@ async def test_web_fetch_uses_readability_when_available(monkeypatch) -> None:
         )
     ]
     monkeypatch.setattr("sideclaw.tools.web.httpx.AsyncClient", _FakeAsyncClient)
+    monkeypatch.setattr("sideclaw.tools.web.validate_url_target", _allow_all)
+    monkeypatch.setattr("sideclaw.tools.web.validate_resolved_url", _allow_all)
     monkeypatch.setitem(sys.modules, "readability", SimpleNamespace(Document=_FakeDocument))
     tool = WebFetchTool()
 
@@ -216,4 +226,18 @@ async def test_web_fetch_uses_readability_when_available(monkeypatch) -> None:
     parsed = json.loads(result)
     assert parsed["success"] is True
     assert parsed["extractor"] == "readability"
-    assert parsed["text"].startswith("# Readable Title")
+    assert "[External content" in parsed["text"]
+    assert "# Readable Title" in parsed["text"]
+
+
+async def test_web_fetch_blocks_private_ip(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "sideclaw.tools.web.validate_url_target",
+        lambda url: (False, "URL resolves to private/reserved address 127.0.0.1"),
+    )
+    tool = WebFetchTool()
+    result = await tool.execute(url="http://localhost/admin")
+    parsed = json.loads(result)
+    assert parsed["success"] is False
+    assert "Blocked" in parsed["error"]
+    assert "private/reserved" in parsed["error"]
