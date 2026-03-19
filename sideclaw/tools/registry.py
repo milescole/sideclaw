@@ -230,9 +230,12 @@ def _build_core_tools(*, workspace: Path) -> list[Tool]:
     """Build tools that are always present."""
     from sideclaw.tools.clarify import ClarifyTool
     from sideclaw.tools.filesystem import (
+        AppendFileTool,
         EditFileTool,
         ListDirTool,
+        MoveFileTool,
         ReadFileTool,
+        SearchFilesTool,
         WriteFileTool,
     )
     from sideclaw.tools.memory import (
@@ -248,7 +251,10 @@ def _build_core_tools(*, workspace: Path) -> list[Tool]:
         ReadFileTool(workspace),
         WriteFileTool(workspace),
         EditFileTool(workspace),
+        AppendFileTool(workspace),
+        MoveFileTool(workspace),
         ListDirTool(workspace),
+        SearchFilesTool(workspace),
         ClarifyTool(),
         WebFetchTool(),
         DocsGrepTool(workspace),
