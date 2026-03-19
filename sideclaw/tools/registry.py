@@ -72,6 +72,7 @@ class ToolRegistry:
             return f"Error: Invalid arguments for tool '{tool.name}': expected a JSON object"
 
         schema = tool.parameter_schema()
+        params.update(self._coerce_params(params, schema))
         try:
             Draft202012Validator.check_schema(schema)
             Draft202012Validator(schema).validate(params)
@@ -82,6 +83,49 @@ class ToolRegistry:
             message = self._format_validation_error(e)
             return f"Error: Invalid arguments for tool '{tool.name}': {message}"
         return None
+
+    @staticmethod
+    def _coerce_params(params: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:
+        """Schema-driven type coercion before validation."""
+        props = schema.get("properties", {})
+        result: dict[str, Any] = {}
+        for key, value in params.items():
+            if key in props:
+                result[key] = ToolRegistry._coerce_value(value, props[key])
+            else:
+                result[key] = value
+        return result
+
+    @staticmethod
+    def _coerce_value(val: Any, prop_schema: dict[str, Any]) -> Any:
+        """Coerce a single value to match the declared schema type."""
+        target = prop_schema.get("type")
+        if target == "integer" and isinstance(val, str):
+            try:
+                return int(val)
+            except ValueError:
+                return val
+        if target == "number" and isinstance(val, str):
+            try:
+                return float(val)
+            except ValueError:
+                return val
+        if target == "boolean" and isinstance(val, str):
+            low = val.lower()
+            if low in ("true", "1", "yes"):
+                return True
+            if low in ("false", "0", "no"):
+                return False
+            return val
+        if target == "string" and val is not None and not isinstance(val, str):
+            return str(val)
+        if target == "array" and isinstance(val, list):
+            item_schema = prop_schema.get("items")
+            if item_schema:
+                return [ToolRegistry._coerce_value(item, item_schema) for item in val]
+        if target == "object" and isinstance(val, dict):
+            return ToolRegistry._coerce_params(val, prop_schema)
+        return val
 
     @staticmethod
     def _format_validation_error(error: ValidationError) -> str:

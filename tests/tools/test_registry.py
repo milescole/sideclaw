@@ -58,10 +58,10 @@ async def test_execute_rejects_missing_required_param(registry):
     assert result == "Error: Invalid arguments for tool 'echo': 'text' is a required property"
 
 
-async def test_execute_rejects_wrong_param_type(registry):
+async def test_execute_coerces_int_to_string(registry):
     registry.register(EchoTool())
     result = await registry.execute("echo", {"text": 123})
-    assert result == "Error: Invalid arguments for tool 'echo': text: 123 is not of type 'string'"
+    assert result == "123"
 
 
 async def test_execute_rejects_unexpected_param(registry):
@@ -82,3 +82,85 @@ def test_unregister(registry):
     registry.register(EchoTool())
     registry.unregister("echo")
     assert not registry.has("echo")
+
+
+# --- Type coercion tests ---
+
+
+class TypedTool(Tool):
+    @property
+    def name(self) -> str:
+        return "typed"
+
+    @property
+    def description(self) -> str:
+        return "Tool with typed params"
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "count": {"type": "integer"},
+                "rate": {"type": "number"},
+                "enabled": {"type": "boolean"},
+                "label": {"type": "string"},
+                "tags": {"type": "array", "items": {"type": "integer"}},
+                "meta": {
+                    "type": "object",
+                    "properties": {"depth": {"type": "integer"}},
+                },
+            },
+            "required": ["count"],
+        }
+
+    async def execute(self, **kwargs) -> str:
+        return repr(kwargs)
+
+
+async def test_coerce_string_to_int(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": "42"})
+    assert "'count': 42" in result
+
+
+async def test_coerce_string_to_float(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": 1, "rate": "3.14"})
+    assert "'rate': 3.14" in result
+
+
+async def test_coerce_string_to_bool(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": 1, "enabled": "true"})
+    assert "'enabled': True" in result
+
+    result = await registry.execute("typed", {"count": 1, "enabled": "false"})
+    assert "'enabled': False" in result
+
+    result = await registry.execute("typed", {"count": 1, "enabled": "0"})
+    assert "'enabled': False" in result
+
+
+async def test_coerce_int_to_string(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": 1, "label": 99})
+    assert "'label': '99'" in result
+
+
+async def test_coerce_array_items(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": 1, "tags": ["10", "20"]})
+    assert "'tags': [10, 20]" in result
+
+
+async def test_coerce_nested_object(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": 1, "meta": {"depth": "5"}})
+    assert "'depth': 5" in result
+
+
+async def test_non_coercible_string_passes_through(registry):
+    registry.register(TypedTool())
+    result = await registry.execute("typed", {"count": "not_a_number"})
+    assert "Error" in result
