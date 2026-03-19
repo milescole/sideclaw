@@ -12,6 +12,7 @@ from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
 from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk
 from sideclaw.runtime.approval import get_pending
+from sideclaw.runtime.commands import CommandHandler
 from sideclaw.runtime.context import (
     reset_tool_runtime_context,
 )
@@ -81,6 +82,13 @@ class RuntimeLoop:
         self._workspace_docs = WorkspaceDocs(self._workspace)
         self._registry = ToolRegistry()
         self._cron_service = cron_service
+        self._command_handler = CommandHandler(
+            session_manager=self._session_manager,
+            config=self._config,
+            provider=self._provider,
+            memory_store=self._memory,
+            workspace_docs=self._workspace_docs,
+        )
 
     def _session_history_limit(self) -> int:
         """Return the configured session history limit for prompt construction."""
@@ -97,6 +105,9 @@ class RuntimeLoop:
 
     async def process_message(self, msg: InboundMessage) -> OutboundMessage:
         """Process a single inbound message through the runtime loop."""
+        if CommandHandler.is_command(msg.text):
+            return await self._handle_command(msg)
+
         prepared = prepare_new_run(
             msg,
             session_manager=self._session_manager,
@@ -112,9 +123,7 @@ class RuntimeLoop:
                 session = prepared.session
                 messages = prepared.messages
                 session.messages.append({"role": "user", "content": msg.text})
-                text = await self._run_provider_loop(
-                    session, messages, channel=msg.channel
-                )
+                text = await self._run_provider_loop(session, messages, channel=msg.channel)
 
                 title_args = (session, msg.text, text or "")
 
@@ -153,6 +162,9 @@ class RuntimeLoop:
         on_stream_chunk: Callable[[StreamChunk], None],
     ) -> OutboundMessage:
         """Process a message with streaming text chunks forwarded to the callback."""
+        if CommandHandler.is_command(msg.text):
+            return await self._handle_command(msg)
+
         prepared = prepare_new_run(
             msg,
             session_manager=self._session_manager,
@@ -169,7 +181,9 @@ class RuntimeLoop:
                 messages = prepared.messages
                 session.messages.append({"role": "user", "content": msg.text})
                 text = await self._run_provider_loop(
-                    session, messages, channel=msg.channel,
+                    session,
+                    messages,
+                    channel=msg.channel,
                     on_stream_chunk=on_stream_chunk,
                 )
 
@@ -241,6 +255,19 @@ class RuntimeLoop:
         finally:
             reset_tool_runtime_context(context_token)
 
+    async def _handle_command(self, msg: InboundMessage) -> OutboundMessage:
+        """Dispatch a slash command and return the result as an outbound message."""
+        session_key = f"{msg.channel}:{msg.chat_id}"
+        session = self._session_manager.get_or_create(session_key)
+        text = await self._command_handler.handle(msg.text, session)
+        return build_outbound_message(
+            output_text=text,
+            surface=msg.channel,
+            conversation_id=msg.chat_id,
+            fallback_channel=msg.channel,
+            fallback_chat_id=msg.chat_id,
+        )
+
     @staticmethod
     def _runtime_context_for_message(msg: InboundMessage):
         """Convert a transport message into semantic runtime context."""
@@ -251,9 +278,7 @@ class RuntimeLoop:
         self, session: Session, user_message: str, assistant_response: str
     ) -> None:
         """Fire-and-forget background task to auto-title the session."""
-        asyncio.create_task(
-            self._auto_title(session, user_message, assistant_response)
-        )
+        asyncio.create_task(self._auto_title(session, user_message, assistant_response))
 
     async def _auto_title(
         self, session: Session, user_message: str, assistant_response: str
