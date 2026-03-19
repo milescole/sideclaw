@@ -75,14 +75,16 @@ class ToolRegistry:
         params.update(self._coerce_params(params, schema))
         try:
             Draft202012Validator.check_schema(schema)
-            Draft202012Validator(schema).validate(params)
         except SchemaError as e:
             logger.error(f"Tool '{tool.name}' has invalid parameter schema: {e.message}")
             return f"Error: Tool '{tool.name}' has an invalid parameter schema"
-        except ValidationError as e:
-            message = self._format_validation_error(e)
-            return f"Error: Invalid arguments for tool '{tool.name}': {message}"
-        return None
+
+        validator = Draft202012Validator(schema)
+        errors = sorted(validator.iter_errors(params), key=lambda e: list(e.absolute_path))
+        if not errors:
+            return None
+        messages = [self._format_validation_error(e) for e in errors]
+        return f"Error: Invalid arguments for tool '{tool.name}': {'; '.join(messages)}"
 
     @staticmethod
     def _coerce_params(params: dict[str, Any], schema: dict[str, Any]) -> dict[str, Any]:

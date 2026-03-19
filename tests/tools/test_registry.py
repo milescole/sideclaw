@@ -164,3 +164,45 @@ async def test_non_coercible_string_passes_through(registry):
     registry.register(TypedTool())
     result = await registry.execute("typed", {"count": "not_a_number"})
     assert "Error" in result
+
+
+# --- Collect-all validation errors ---
+
+
+class TwoRequiredTool(Tool):
+    @property
+    def name(self) -> str:
+        return "two_req"
+
+    @property
+    def description(self) -> str:
+        return "Tool with two required fields"
+
+    @property
+    def parameters(self) -> dict:
+        return {
+            "type": "object",
+            "properties": {
+                "a": {"type": "string"},
+                "b": {"type": "integer"},
+            },
+            "required": ["a", "b"],
+        }
+
+    async def execute(self, **kwargs) -> str:
+        return "ok"
+
+
+async def test_collect_all_missing_required_fields(registry):
+    registry.register(TwoRequiredTool())
+    result = await registry.execute("two_req", {})
+    assert "'a' is a required property" in result
+    assert "'b' is a required property" in result
+    assert ";" in result
+
+
+async def test_collect_wrong_type_and_missing_field(registry):
+    registry.register(TwoRequiredTool())
+    result = await registry.execute("two_req", {"a": "ok", "b": "not_int"})
+    assert "Error" in result
+    assert "not of type 'integer'" in result
