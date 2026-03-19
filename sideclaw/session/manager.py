@@ -63,9 +63,48 @@ class SessionManager:
             self._locks[key] = lock
         return lock
 
+    def delete(self, key: str) -> bool:
+        """Delete a session from disk and cache. Returns True if deleted."""
+        path = self._key_to_path(key)
+        self._cache.pop(key, None)
+        if path.exists():
+            path.unlink()
+            logger.info(f"Session deleted: {key}")
+            return True
+        return False
+
     def invalidate(self, key: str) -> None:
         """Remove session from cache."""
         self._cache.pop(key, None)
+
+    def exists(self, key: str) -> bool:
+        """Check whether a persisted session file exists for the given key."""
+        return self._key_to_path(key).exists()
+
+    def rename(self, key: str, title: str) -> bool:
+        """Set a user-defined title. Returns False if the session doesn't exist."""
+        if not self.exists(key):
+            return False
+        session = self.get_or_create(key)
+        session.title = title
+        session.title_source = "user"
+        self.save(session)
+        return True
+
+    def get_session_info(self, key: str) -> dict | None:
+        """Return metadata dict for a single session, or None if not found."""
+        path = self._key_to_path(key)
+        if not path.exists():
+            return None
+        try:
+            text = path.read_text()
+            lines = text.strip().split("\n")
+            meta = json.loads(lines[0])
+            meta["key"] = key
+            meta["message_count"] = sum(1 for line in lines[1:] if line.strip())
+            return meta
+        except (json.JSONDecodeError, IndexError):
+            return None
 
     def list_sessions(self) -> list[dict]:
         """List all saved sessions with title, message count, and metadata."""

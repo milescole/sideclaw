@@ -18,6 +18,18 @@ from sideclaw.cli.commands.cron import (
 from sideclaw.cli.commands.cron import (
     cron_remove as cron_remove_command,
 )
+from sideclaw.cli.commands.sessions import (
+    sessions_delete as sessions_delete_command,
+)
+from sideclaw.cli.commands.sessions import (
+    sessions_list as sessions_list_command,
+)
+from sideclaw.cli.commands.sessions import (
+    sessions_rename as sessions_rename_command,
+)
+from sideclaw.cli.commands.sessions import (
+    sessions_show as sessions_show_command,
+)
 from sideclaw.cli.commands.gateway import gateway as gateway_command
 from sideclaw.cli.commands.onboard import onboard as onboard_command
 from sideclaw.cli.commands.status import status as status_command
@@ -25,6 +37,7 @@ from sideclaw.utils.redact import configure_logging
 
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
 cron_app = typer.Typer(help="Manage scheduled jobs")
+sessions_app = typer.Typer(help="Manage conversation sessions")
 
 
 @app.callback()
@@ -103,3 +116,30 @@ def cron_disable(job_id: str) -> None:
 
 
 app.add_typer(cron_app, name="cron")
+
+
+@sessions_app.command("list")
+def sessions_list() -> None:
+    """List all sessions."""
+    sessions_list_command()
+
+
+@sessions_app.command("show")
+def sessions_show(key: str) -> None:
+    """Show details for a session."""
+    sessions_show_command(key)
+
+
+@sessions_app.command("rename")
+def sessions_rename(key: str, title: str) -> None:
+    """Set a user-defined title for a session."""
+    sessions_rename_command(key, title)
+
+
+@sessions_app.command("delete")
+def sessions_delete(key: str) -> None:
+    """Delete a session by key."""
+    sessions_delete_command(key)
+
+
+app.add_typer(sessions_app, name="sessions")
