@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+from sideclaw.memory.safety import scan_memory_content
 from sideclaw.runtime.models.approval import ApprovalRequirement
 from sideclaw.tools.base import Tool, truncate_tool_output
 from sideclaw.workspace.docs import WorkspaceDocs
@@ -315,6 +316,10 @@ class MemoryWriteTool(Tool):
         }
 
     async def execute(self, **kwargs: Any) -> str:
+        finding = scan_memory_content(kwargs["content"])
+        if finding:
+            return f"Error: Memory write blocked — {finding}"
+
         try:
             path = self._docs.write(
                 target=kwargs["target"],
