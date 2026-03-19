@@ -16,6 +16,8 @@ class Session:
     approved_approval_keys: set[str] = field(default_factory=set)
     pending_approval: dict | None = None
     deferred_tool_calls: list[dict] = field(default_factory=list)
+    title: str | None = None
+    title_source: str = "auto"  # "auto" or "user"
 
     def get_history(self, max_messages: int = 500) -> list[dict]:
         """Get recent unconsolidated messages, aligned to start on a user turn."""
@@ -34,3 +36,5 @@ class Session:
         self.approved_approval_keys.clear()
         self.pending_approval = None
         self.deferred_tool_calls.clear()
+        self.title = None
+        self.title_source = "auto"

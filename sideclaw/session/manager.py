@@ -47,6 +47,8 @@ class SessionManager:
             "approved_approval_keys": sorted(session.approved_approval_keys),
             "pending_approval": session.pending_approval,
             "deferred_tool_calls": session.deferred_tool_calls,
+            "title": session.title,
+            "title_source": session.title_source,
         }
         lines = [json.dumps(meta)] + [json.dumps(msg) for msg in session.messages]
         atomic_write_text(path, "\n".join(lines) + "\n")
@@ -66,13 +68,17 @@ class SessionManager:
         self._cache.pop(key, None)
 
     def list_sessions(self) -> list[dict]:
-        """List all saved sessions."""
+        """List all saved sessions with title, message count, and metadata."""
         sessions = []
         for path in self._dir.glob("*.jsonl"):
             try:
-                first_line = path.read_text().split("\n", 1)[0]
-                meta = json.loads(first_line)
-                sessions.append({"key": path.stem.replace("__", ":"), **meta})
+                text = path.read_text()
+                lines = text.strip().split("\n")
+                meta = json.loads(lines[0])
+                message_count = sum(1 for line in lines[1:] if line.strip())
+                entry = {"key": path.stem.replace("__", ":"), **meta}
+                entry["message_count"] = message_count
+                sessions.append(entry)
             except (json.JSONDecodeError, IndexError):
                 continue
         return sessions
@@ -128,6 +134,8 @@ class SessionManager:
             approved_approval_keys=set(meta.get("approved_approval_keys", [])),
             pending_approval=meta.get("pending_approval"),
             deferred_tool_calls=meta.get("deferred_tool_calls", []),
+            title=meta.get("title"),
+            title_source=meta.get("title_source", "auto"),
         )
         return session, corrupted
 

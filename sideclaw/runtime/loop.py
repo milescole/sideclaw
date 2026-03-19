@@ -1,5 +1,6 @@
 """Runtime loop: receive message, call LLM, execute tools, respond."""
 
+import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -40,6 +41,7 @@ from sideclaw.runtime.models.approval import (
 from sideclaw.runtime.models.results import RunResult, RunStatus
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
+from sideclaw.session.title import maybe_auto_title
 from sideclaw.tools.registry import ToolRegistry, build_default_tool_registry
 from sideclaw.workspace.docs import WorkspaceDocs
 
@@ -103,6 +105,7 @@ class RuntimeLoop:
         )
         runtime_context = prepared.runtime_context
         context_token = bind_tool_runtime_context(runtime_context)
+        title_args: tuple[Session, str, str] | None = None
 
         try:
             async with prepared.lock:
@@ -112,6 +115,8 @@ class RuntimeLoop:
                 text = await self._run_provider_loop(
                     session, messages, channel=msg.channel
                 )
+
+                title_args = (session, msg.text, text or "")
 
                 await persist_session_state(
                     session=session,
@@ -129,13 +134,16 @@ class RuntimeLoop:
                     surface=runtime_context.surface,
                     conversation_id=runtime_context.conversation_id,
                 )
-                return build_outbound_message(
+                outbound = build_outbound_message(
                     output_text=result.output_text,
                     surface=result.surface,
                     conversation_id=result.conversation_id,
                     fallback_channel=msg.channel,
                     fallback_chat_id=msg.chat_id,
                 )
+            if title_args is not None:
+                self._schedule_auto_title(*title_args)
+            return outbound
         finally:
             reset_tool_runtime_context(context_token)
 
@@ -153,6 +161,7 @@ class RuntimeLoop:
         )
         runtime_context = prepared.runtime_context
         context_token = bind_tool_runtime_context(runtime_context)
+        title_args: tuple[Session, str, str] | None = None
 
         try:
             async with prepared.lock:
@@ -163,6 +172,8 @@ class RuntimeLoop:
                     session, messages, channel=msg.channel,
                     on_stream_chunk=on_stream_chunk,
                 )
+
+                title_args = (session, msg.text, text or "")
 
                 await persist_session_state(
                     session=session,
@@ -180,13 +191,16 @@ class RuntimeLoop:
                     surface=runtime_context.surface,
                     conversation_id=runtime_context.conversation_id,
                 )
-                return build_outbound_message(
+                outbound = build_outbound_message(
                     output_text=result.output_text,
                     surface=result.surface,
                     conversation_id=result.conversation_id,
                     fallback_channel=msg.channel,
                     fallback_chat_id=msg.chat_id,
                 )
+            if title_args is not None:
+                self._schedule_auto_title(*title_args)
+            return outbound
         finally:
             reset_tool_runtime_context(context_token)
 
@@ -232,6 +246,28 @@ class RuntimeLoop:
         """Convert a transport message into semantic runtime context."""
         _request, runtime_context = runtime_context_for_message(msg)
         return runtime_context
+
+    def _schedule_auto_title(
+        self, session: Session, user_message: str, assistant_response: str
+    ) -> None:
+        """Fire-and-forget background task to auto-title the session."""
+        asyncio.create_task(
+            self._auto_title(session, user_message, assistant_response)
+        )
+
+    async def _auto_title(
+        self, session: Session, user_message: str, assistant_response: str
+    ) -> None:
+        """Generate a title and persist the session if it changed."""
+        await maybe_auto_title(
+            session=session,
+            provider=self._provider,
+            model=self._config.agent.model,
+            user_message=user_message,
+            assistant_response=assistant_response,
+        )
+        if session.title:
+            self._session_manager.save(session)
 
     def _max_tool_iterations(self, channel: str) -> int:
         """Return the tool iteration limit, multiplied for cron runs."""
