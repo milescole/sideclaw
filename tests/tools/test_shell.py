@@ -81,7 +81,7 @@ async def test_exec_scrubs_secret_env(workspace, monkeypatch):
 async def test_exec_truncates_large_output(workspace):
     tool = ExecTool(workspace=workspace, timeout=10)
     result = await tool.execute(command="python3 -c 'print(\"x\" * 12000)'")
-    assert "truncated" in result.lower()
+    assert "omitted" in result.lower()
 
 
 def test_exec_read_only_command_does_not_require_approval(workspace):

@@ -14,11 +14,16 @@ def truncate_tool_output(
     *,
     max_chars: int = DEFAULT_MAX_TOOL_OUTPUT_CHARS,
 ) -> str:
-    """Bound tool output before it is sent back into model context."""
+    """Bound tool output before it is sent back into model context.
+
+    Uses a head+tail strategy so the LLM sees both the beginning and end of
+    output (exit codes, summaries, and errors are typically at the end).
+    """
     if len(output) <= max_chars:
         return output
-    truncated = len(output) - max_chars
-    return output[:max_chars] + f"\n... (truncated, {truncated} more chars)"
+    half = max_chars // 2
+    omitted = len(output) - max_chars
+    return output[:half] + f"\n\n... ({omitted:,} chars omitted) ...\n\n" + output[-half:]
 
 
 class Tool(ABC):

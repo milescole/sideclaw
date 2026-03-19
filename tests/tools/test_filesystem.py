@@ -69,7 +69,7 @@ async def test_read_file_truncates_large_output(workspace):
 
     result = await tool.execute(path="large.txt")
 
-    assert "truncated" in result.lower()
+    assert "omitted" in result.lower()
     assert len(result) < 12_000
 
 
