@@ -188,8 +188,8 @@ async def test_max_tool_iterations(agent, bus, mock_provider):
     msg = InboundMessage(channel="cli", chat_id="user1", sender_id="user1", text="loop")
     await agent.process_message(msg)
 
-    # Should stop after max iterations (default 20)
-    assert mock_provider.chat.call_count <= 21
+    # Should stop after max iterations (default 40)
+    assert mock_provider.chat.call_count <= 41
 
 
 def test_register_default_tools_skips_exec_when_disabled(config, bus, mock_provider, workspace):

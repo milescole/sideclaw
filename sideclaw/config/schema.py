@@ -52,6 +52,7 @@ class AgentConfig(BaseModel):
     memory_window: int = 50
     provider: str = "auto"
     streaming: bool = True
+    max_tool_iterations: int = 40
     retry_max: int = 3
     retry_base_delay: float = 1.0
     retry_max_delay: float = 10.0

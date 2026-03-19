@@ -28,6 +28,7 @@ def test_agent_config_defaults():
     agent = AgentConfig()
     assert agent.memory_window == 50
     assert agent.workspace == "~/.sideclaw/workspace"
+    assert agent.max_tool_iterations == 40
 
 
 def test_telegram_config():

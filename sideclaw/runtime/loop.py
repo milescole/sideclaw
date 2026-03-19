@@ -43,7 +43,7 @@ from sideclaw.session.session import Session
 from sideclaw.tools.registry import ToolRegistry, build_default_tool_registry
 from sideclaw.workspace.docs import WorkspaceDocs
 
-MAX_TOOL_ITERATIONS = 20
+_CRON_ITERATION_MULTIPLIER = 3
 
 if TYPE_CHECKING:
     from sideclaw.cron.service import CronService
@@ -109,7 +109,9 @@ class RuntimeLoop:
                 session = prepared.session
                 messages = prepared.messages
                 session.messages.append({"role": "user", "content": msg.text})
-                text = await self._run_provider_loop(session, messages)
+                text = await self._run_provider_loop(
+                    session, messages, channel=msg.channel
+                )
 
                 await persist_session_state(
                     session=session,
@@ -158,7 +160,8 @@ class RuntimeLoop:
                 messages = prepared.messages
                 session.messages.append({"role": "user", "content": msg.text})
                 text = await self._run_provider_loop(
-                    session, messages, on_stream_chunk=on_stream_chunk
+                    session, messages, channel=msg.channel,
+                    on_stream_chunk=on_stream_chunk,
                 )
 
                 await persist_session_state(
@@ -216,7 +219,7 @@ class RuntimeLoop:
                     provider=self._provider,
                     registry=self._registry,
                     config=self._config,
-                    max_tool_iterations=MAX_TOOL_ITERATIONS,
+                    max_tool_iterations=self._max_tool_iterations(msg.channel),
                 )
                 if should_save:
                     save_session_state(session=session, session_manager=self._session_manager)
@@ -230,10 +233,18 @@ class RuntimeLoop:
         _request, runtime_context = runtime_context_for_message(msg)
         return runtime_context
 
+    def _max_tool_iterations(self, channel: str) -> int:
+        """Return the tool iteration limit, multiplied for cron runs."""
+        base = self._config.agent.max_tool_iterations
+        if channel == "cron":
+            return base * _CRON_ITERATION_MULTIPLIER
+        return base
+
     async def _run_provider_loop(
         self,
         session: Session,
         messages: list[dict[str, Any]],
+        channel: str = "",
         on_stream_chunk: "Callable[[StreamChunk], None] | None" = None,
     ) -> str:
         """Drive the provider/tool loop until text output or pending approval."""
@@ -243,7 +254,7 @@ class RuntimeLoop:
             provider=self._provider,
             registry=self._registry,
             config=self._config,
-            max_tool_iterations=MAX_TOOL_ITERATIONS,
+            max_tool_iterations=self._max_tool_iterations(channel),
             on_stream_chunk=on_stream_chunk,
         )
 
