@@ -31,6 +31,8 @@ from sideclaw.cli.commands.sessions import (
     sessions_show as sessions_show_command,
 )
 from sideclaw.cli.commands.gateway import gateway as gateway_command
+from sideclaw.cli.commands.memory import memory_show as memory_show_command
+from sideclaw.cli.commands.memory import memory_usage as memory_usage_command
 from sideclaw.cli.commands.onboard import onboard as onboard_command
 from sideclaw.cli.commands.status import status as status_command
 from sideclaw.utils.redact import configure_logging
@@ -38,6 +40,7 @@ from sideclaw.utils.redact import configure_logging
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
 cron_app = typer.Typer(help="Manage scheduled jobs")
 sessions_app = typer.Typer(help="Manage conversation sessions")
+memory_app = typer.Typer(help="Inspect memory files and token budgets")
 
 
 @app.callback()
@@ -143,3 +146,18 @@ def sessions_delete(key: str) -> None:
 
 
 app.add_typer(sessions_app, name="sessions")
+
+
+@memory_app.command("show")
+def memory_show() -> None:
+    """Display memory file contents and sizes."""
+    memory_show_command()
+
+
+@memory_app.command("usage")
+def memory_usage() -> None:
+    """Display per-file token usage against the context budget."""
+    memory_usage_command()
+
+
+app.add_typer(memory_app, name="memory")
