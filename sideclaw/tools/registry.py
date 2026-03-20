@@ -240,6 +240,7 @@ def _build_core_tools(*, workspace: Path) -> list[Tool]:
     )
     from sideclaw.tools.memory import (
         DocsGrepTool,
+        MemoryForgetTool,
         MemorySearchTool,
         MemoryWriteTool,
         WorkspaceReadTool,
@@ -262,4 +263,5 @@ def _build_core_tools(*, workspace: Path) -> list[Tool]:
         WorkspaceReadTool(workspace),
         WorkspaceTreeTool(workspace),
         MemoryWriteTool(workspace),
+        MemoryForgetTool(workspace),
     ]

@@ -333,3 +333,72 @@ class MemoryWriteTool(Tool):
             return f"Error: {exc}"
 
         return f"Wrote workspace memory to {path.relative_to(self._workspace)}"
+
+
+class MemoryForgetTool(Tool):
+    """Remove entries from long-term memory by section heading or keyword."""
+
+    def __init__(self, workspace: Path) -> None:
+        self._docs = WorkspaceDocs(workspace)
+
+    @property
+    def name(self) -> str:
+        return "forget_memory"
+
+    @property
+    def description(self) -> str:
+        return "Remove entries from long-term memory by section heading or keyword match"
+
+    def approval_requirement(self, **kwargs: Any) -> ApprovalRequirement:
+        return ApprovalRequirement.unless_session_approved
+
+    def approval_key(self, **kwargs: Any) -> str:
+        return "workspace:forget_memory"
+
+    def approval_subject(self, **kwargs: Any) -> str:
+        return kwargs.get("section") or kwargs.get("keyword") or "memory"
+
+    def approval_action_type(self, **kwargs: Any) -> str:
+        return "workspace_write"
+
+    def approval_description(self, **kwargs: Any) -> str:
+        target = kwargs.get("section") or kwargs.get("keyword") or "memory"
+        return f"remove '{target}' from long-term memory"
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "section": {
+                    "type": "string",
+                    "description": "Section heading to remove (e.g. 'Preferences')",
+                },
+                "keyword": {
+                    "type": "string",
+                    "description": "Keyword to match — all matching lines are removed",
+                },
+            },
+            "oneOf": [
+                {"required": ["section"]},
+                {"required": ["keyword"]},
+            ],
+        }
+
+    async def execute(self, **kwargs: Any) -> str:
+        section = kwargs.get("section")
+        keyword = kwargs.get("keyword")
+
+        if section:
+            removed = self._docs.remove_long_term_section(section)
+            if removed:
+                return f"Removed section '## {section}' from long-term memory."
+            return f"Section '## {section}' not found in long-term memory."
+
+        if keyword:
+            removed = self._docs.remove_long_term_matching(keyword)
+            if removed:
+                return f"Removed {len(removed)} line(s) matching '{keyword}' from long-term memory."
+            return f"No lines matching '{keyword}' found in long-term memory."
+
+        return "Error: Provide either 'section' or 'keyword'."

@@ -2,6 +2,7 @@ import pytest
 
 from sideclaw.tools.memory import (
     DocsGrepTool,
+    MemoryForgetTool,
     MemorySearchTool,
     MemoryWriteTool,
     WorkspaceReadTool,
@@ -205,3 +206,56 @@ async def test_workspace_tree_tool_schema(workspace_tree_tool):
     schema = workspace_tree_tool.to_schema()
     assert schema["function"]["name"] == "workspace_tree"
     assert "max_depth" in schema["function"]["parameters"]["properties"]
+
+
+@pytest.fixture
+def memory_forget_tool(workspace):
+    return MemoryForgetTool(workspace)
+
+
+async def test_forget_by_section_removes_section(memory_forget_tool, workspace):
+    long_term = workspace / "docs" / "memory" / "long-term.md"
+    long_term.write_text(
+        "## Durable Facts\n\n- User likes Python.\n\n"
+        "## Preferences\n\n- Dark mode preferred.\n"
+    )
+
+    result = await memory_forget_tool.execute(section="Preferences")
+
+    assert "Removed section" in result
+    updated = long_term.read_text()
+    assert "Durable Facts" in updated
+    assert "Dark mode" not in updated
+
+
+async def test_forget_by_keyword_removes_matching_lines(memory_forget_tool, workspace):
+    long_term = workspace / "docs" / "memory" / "long-term.md"
+    long_term.write_text(
+        "## Durable Facts\n\n- User likes Python.\n- User likes cats.\n- User likes dogs.\n"
+    )
+
+    result = await memory_forget_tool.execute(keyword="cats")
+
+    assert "1 line(s)" in result
+    updated = long_term.read_text()
+    assert "cats" not in updated
+    assert "Python" in updated
+    assert "dogs" in updated
+
+
+async def test_forget_nonexistent_section_returns_not_found(memory_forget_tool, workspace):
+    long_term = workspace / "docs" / "memory" / "long-term.md"
+    long_term.write_text("## Durable Facts\n\n- User likes Python.\n")
+
+    result = await memory_forget_tool.execute(section="Nonexistent")
+
+    assert "not found" in result
+
+
+async def test_forget_nonexistent_keyword_returns_not_found(memory_forget_tool, workspace):
+    long_term = workspace / "docs" / "memory" / "long-term.md"
+    long_term.write_text("## Durable Facts\n\n- User likes Python.\n")
+
+    result = await memory_forget_tool.execute(keyword="zzzznothere")
+
+    assert "No lines matching" in result

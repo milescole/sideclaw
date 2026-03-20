@@ -298,6 +298,64 @@ class WorkspaceDocs:
         atomic_write_text(target_path, rendered)
         return target_path
 
+    def remove_long_term_section(self, heading: str) -> str | None:
+        """Remove a ## section from long-term memory. Returns removed text or None."""
+        target_path = self._workspace / _TARGET_PATHS["long_term"]
+        if not target_path.exists():
+            return None
+
+        self._snapshot_long_term()
+        existing = target_path.read_text(encoding="utf-8")
+        frontmatter, body = self._split_frontmatter(existing)
+        lines = body.splitlines()
+
+        section_heading = f"## {heading}"
+        start = None
+        end = None
+        for index, line in enumerate(lines):
+            if line.strip() == section_heading:
+                start = index
+                continue
+            if start is not None and line.startswith("## "):
+                end = index
+                break
+        if start is None:
+            return None
+        if end is None:
+            end = len(lines)
+
+        removed = "\n".join(lines[start:end]).strip()
+        remaining = lines[:start] + lines[end:]
+        rendered = f"{frontmatter}{chr(10).join(remaining).strip()}\n"
+        atomic_write_text(target_path, rendered)
+        return removed
+
+    def remove_long_term_matching(self, keyword: str) -> list[str]:
+        """Remove lines containing *keyword* from long-term memory. Returns removed lines."""
+        target_path = self._workspace / _TARGET_PATHS["long_term"]
+        if not target_path.exists():
+            return []
+
+        self._snapshot_long_term()
+        existing = target_path.read_text(encoding="utf-8")
+        frontmatter, body = self._split_frontmatter(existing)
+        keyword_lower = keyword.lower()
+
+        kept: list[str] = []
+        removed: list[str] = []
+        for line in body.splitlines():
+            if keyword_lower in line.lower() and not line.startswith("## "):
+                removed.append(line)
+            else:
+                kept.append(line)
+
+        if not removed:
+            return []
+
+        rendered = f"{frontmatter}{chr(10).join(kept).strip()}\n"
+        atomic_write_text(target_path, rendered)
+        return removed
+
     def _target_path(self, *, target: str, slug: str | None, date: str | None) -> Path:
         resolved_date = self._resolve_date(date)
         if target in _TARGET_PATHS:
