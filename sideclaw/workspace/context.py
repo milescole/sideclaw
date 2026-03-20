@@ -90,6 +90,7 @@ class WorkspaceContextBundle:
     sections: list[WorkspaceContextSection]
     warnings: list[str]
     bootstrap_mode: bool
+    section_token_counts: dict[str, int] = field(default_factory=dict)
 
     def render(self) -> str:
         """Render all sections into a single system-prompt block."""
@@ -177,10 +178,19 @@ class WorkspaceContextManager:
             if routed_section_count >= self._max_context_files:
                 break
 
+        from sideclaw.utils.tokens import count_tokens
+
+        token_counts = {
+            section.relative_path: count_tokens(section.render())
+            for section in sections
+            if section.content
+        }
+
         return WorkspaceContextBundle(
             sections=sections,
             warnings=warnings,
             bootstrap_mode=bootstrap_mode,
+            section_token_counts=token_counts,
         )
 
     def _validate_workspace(self) -> None:
