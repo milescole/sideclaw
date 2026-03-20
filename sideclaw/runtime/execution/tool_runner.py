@@ -103,9 +103,14 @@ async def execute_tool_call(
             or f"Error: {tool.approval_description(**params)} not approved",
         )
 
+    t0 = time.monotonic()
+    result_content = await registry.execute(name, params)
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    logger.debug(f"Tool {name} completed in {duration_ms}ms")
+
     return ToolExecutionResult(
         outcome=ToolExecutionOutcome.success,
-        content=await registry.execute(name, params),
+        content=result_content,
     )
 
 

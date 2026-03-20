@@ -14,6 +14,8 @@ class RuntimeEventKind(StrEnum):
     output_emitted = "output_emitted"
     run_completed = "run_completed"
     run_failed = "run_failed"
+    llm_call_completed = "llm_call_completed"
+    consolidation_completed = "consolidation_completed"
 
 
 @dataclass(frozen=True)

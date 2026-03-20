@@ -38,6 +38,26 @@ class RuntimeState:
         """Record a surfaced output."""
         self.outputs.append(output)
 
+    def get_usage_summary(self) -> dict:
+        """Aggregate token counts and timing from llm_call_completed events."""
+        total_prompt = 0
+        total_completion = 0
+        total_duration_ms = 0
+        llm_calls = 0
+        for event in self.events:
+            if event.kind.value == "llm_call_completed":
+                total_prompt += event.data.get("prompt_tokens", 0)
+                total_completion += event.data.get("completion_tokens", 0)
+                total_duration_ms += event.data.get("duration_ms", 0)
+                llm_calls += 1
+        return {
+            "prompt_tokens": total_prompt,
+            "completion_tokens": total_completion,
+            "total_tokens": total_prompt + total_completion,
+            "duration_ms": total_duration_ms,
+            "llm_calls": llm_calls,
+        }
+
     def finish(self, *, status: RunStatus, output_text: str) -> RunResult:
         """Build the final run result from collected state."""
         self.phase = RunPhase.completed if status != RunStatus.failed else RunPhase.failed
