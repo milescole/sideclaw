@@ -88,7 +88,7 @@ sideclaw/
 ├── session/       # JSONL-backed per-chat session persistence and locking
 ├── skills/        # built-in skill prompts copied into workspaces and loaded by relevance
 ├── tools/         # tool interfaces, registry, construction, and built-in tools
-├── utils/         # shared file and redaction helpers
+├── utils/         # shared file, redaction, and token counting helpers
 └── workspace/     # scaffold, canonical doc helpers, prompt-context routing
 
 tests/
@@ -131,6 +131,7 @@ tests/
 - `sideclaw/workspace/context.py` and `sideclaw/workspace/docs.py`: canonical workspace document routing, reading, search, and controlled writes.
 - `sideclaw/session/manager.py`: per-session persistence and lock ownership. Concurrency changes should be reviewed carefully.
 - `sideclaw/memory/store.py`: long-term summary and history handling.
+- `sideclaw/utils/tokens.py`: token counting (tiktoken o200k_base with char/4 fallback), message token estimation, and compact formatting helpers.
 - `sideclaw/runtime/approval.py`: centralized approval policy, pending approvals, CLI prompts, and session-scope approvals.
 - `sideclaw/tools/base.py`: tool base class and shared helpers.
 
