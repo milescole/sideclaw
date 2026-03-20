@@ -106,6 +106,10 @@ async def consolidate_memory(
         if msg.get("role") in ("user", "assistant") and msg.get("content"):
             summary_prompt += f"**{msg['role']}**: {msg['content']}\n"
 
+    chars_before = sum(
+        len(msg.get("content", "")) for msg in old_messages if isinstance(msg.get("content"), str)
+    )
+
     try:
         if cost_guard is not None:
             allowed, reason = cost_guard.check_allowed(config.agent.model)
@@ -118,7 +122,12 @@ async def consolidate_memory(
             model=config.agent.model,
         )
         duration_ms = int((time.monotonic() - t0) * 1000)
+
+        prompt_tokens = 0
+        completion_tokens = 0
         if usage_tracker is not None and response.usage:
+            prompt_tokens = response.usage.get("prompt_tokens", 0)
+            completion_tokens = response.usage.get("completion_tokens", 0)
             usage_tracker.record_from_response(
                 usage=response.usage,
                 session_key=session.key,
@@ -139,7 +148,12 @@ async def consolidate_memory(
                 memory_store.append_history(f"Topics: {'; '.join(entry_parts[:3])}")
             session.last_consolidated = len(session.messages) - config.agent.memory_window
             session_manager.save(session)
-            logger.info("Memory consolidated")
+            sections_updated = list(sections.keys()) if sections else []
+            logger.info(
+                f"Consolidated {len(old_messages)} messages ({chars_before} chars) "
+                f"into {sections_updated}. "
+                f"Tokens: {prompt_tokens}+{completion_tokens}, {duration_ms}ms"
+            )
     except (RuntimeError, OSError, ValueError, TimeoutError) as e:
         logger.error(f"Memory consolidation failed: {e}")
 
