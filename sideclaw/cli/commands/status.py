@@ -42,3 +42,14 @@ def status() -> None:
         )
     )
     print_line(format_telegram_status(config.channels.telegram is not None))
+
+    # Usage tracking status
+    if config.usage.track_usage:
+        usage_path = config.workspace_path / config.usage.usage_log_path
+        if usage_path.exists():
+            line_count = sum(1 for _ in usage_path.open())
+            print_line(f"Usage tracking: enabled ({line_count} records)")
+        else:
+            print_line("Usage tracking: enabled (no records yet)")
+    else:
+        print_line("Usage tracking: disabled")

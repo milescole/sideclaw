@@ -7,8 +7,10 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 if TYPE_CHECKING:
+    from sideclaw.agent.prompt_builder import PromptBuilder
     from sideclaw.config.schema import Config
     from sideclaw.memory.store import MemoryStore
+    from sideclaw.metrics.usage import UsageTracker
     from sideclaw.providers.base import LLMProvider
     from sideclaw.session.manager import SessionManager
     from sideclaw.session.session import Session
@@ -18,6 +20,7 @@ if TYPE_CHECKING:
 _COMMAND_HELP = {
     "new": "Clear session and start a new conversation",
     "compact": "Trigger memory consolidation now",
+    "usage": "Show context and token usage for this session",
     "help": "List available slash commands",
 }
 
@@ -35,12 +38,16 @@ class CommandHandler:
         provider: LLMProvider,
         memory_store: MemoryStore,
         workspace_docs: WorkspaceDocs,
+        usage_tracker: UsageTracker | None = None,
+        prompt_builder: PromptBuilder | None = None,
     ) -> None:
         self._session_manager = session_manager
         self._config = config
         self._provider = provider
         self._memory_store = memory_store
         self._workspace_docs = workspace_docs
+        self._usage_tracker = usage_tracker
+        self._prompt_builder = prompt_builder
 
     @staticmethod
     def is_command(text: str) -> bool:
@@ -94,6 +101,17 @@ class CommandHandler:
             workspace_docs=self._workspace_docs,
         )
         return "Memory consolidation complete."
+
+    async def _process_usage(self, args: str, session: Session) -> str:
+        """Show context and token usage for the current session."""
+        from sideclaw.metrics.display import render_usage
+
+        return render_usage(
+            session=session,
+            config=self._config,
+            usage_tracker=self._usage_tracker,
+            prompt_builder=self._prompt_builder,
+        )
 
     async def _process_help(self, args: str, session: Session) -> str:
         """List available commands."""

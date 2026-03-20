@@ -8,12 +8,10 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from loguru import logger
-
-from sideclaw.utils.files import atomic_write_text
 
 
 @dataclass

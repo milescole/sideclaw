@@ -94,6 +94,8 @@ class RuntimeLoop:
             provider=self._provider,
             memory_store=self._memory,
             workspace_docs=self._workspace_docs,
+            usage_tracker=self._usage_tracker,
+            prompt_builder=self._context,
         )
 
     def _session_history_limit(self) -> int:
