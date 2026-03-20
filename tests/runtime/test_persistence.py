@@ -3,7 +3,11 @@ from unittest.mock import AsyncMock
 from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig
 from sideclaw.memory.store import MemoryStore
 from sideclaw.providers.base import LLMResponse
-from sideclaw.runtime.execution.persistence import persist_session_state
+from sideclaw.runtime.execution.persistence import (
+    _should_compress,
+    _unconsolidated_chars,
+    persist_session_state,
+)
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
 from sideclaw.workspace import sync_workspace_templates

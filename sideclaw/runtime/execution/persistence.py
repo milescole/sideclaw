@@ -16,6 +16,36 @@ def save_session_state(*, session: Session, session_manager: SessionManager) -> 
     session_manager.save(session)
 
 
+def _unconsolidated_chars(session: Session) -> int:
+    """Estimate the total character length of unconsolidated messages."""
+    total = 0
+    for msg in session.messages[session.last_consolidated :]:
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            total += len(content)
+    return total
+
+
+def _should_compress(session: Session, config: Config) -> bool:
+    """Check whether consolidation should trigger.
+
+    Triggers on either condition:
+    - Message count exceeds ``memory_window``
+    - Unconsolidated character size exceeds ``compression_threshold * max_context_chars``
+    """
+    unconsolidated_count = len(session.messages) - session.last_consolidated
+    if unconsolidated_count >= config.agent.memory_window:
+        return True
+
+    threshold = config.agent.compression_threshold
+    if threshold > 0:
+        char_limit = int(config.memory.max_context_chars * threshold)
+        if _unconsolidated_chars(session) >= char_limit:
+            return True
+
+    return False
+
+
 async def persist_session_state(
     *,
     session: Session,
@@ -28,8 +58,7 @@ async def persist_session_state(
     """Persist the session and trigger consolidation when needed."""
     save_session_state(session=session, session_manager=session_manager)
 
-    unconsolidated = len(session.messages) - session.last_consolidated
-    if unconsolidated >= config.agent.memory_window:
+    if _should_compress(session, config):
         await consolidate_memory(
             session=session,
             session_manager=session_manager,
