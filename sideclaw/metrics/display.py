@@ -7,7 +7,8 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from sideclaw.metrics.context_usage import compute_context_usage
-from sideclaw.utils.tokens import format_duration, format_token_count
+from sideclaw.metrics.pricing import PricingRegistry
+from sideclaw.utils.tokens import format_token_count
 
 if TYPE_CHECKING:
     from sideclaw.agent.prompt_builder import PromptBuilder
@@ -67,8 +68,19 @@ def render_usage(
         if totals.llm_calls > 0 and totals.total_duration_ms > 0:
             avg_ms = totals.total_duration_ms // totals.llm_calls
             lines.append(f"  Avg latency: {avg_ms}ms")
+        cost = _estimate_session_cost(usage_tracker, session.key)
+        if cost > 0:
+            lines.append(f"  Estimated cost: ${cost:.4f}")
 
     return "\n".join(lines)
+
+
+def _estimate_session_cost(tracker: UsageTracker, session_key: str) -> float:
+    """Estimate cost for in-memory session records."""
+    records = [r for r in tracker._records if r.session_key == session_key]
+    if not records:
+        return 0.0
+    return PricingRegistry().estimate_session_cost(records)
 
 
 def render_insights(
@@ -105,6 +117,9 @@ def render_insights(
     if total_duration > 0:
         avg_ms = total_duration // len(records)
         lines.append(f"  Avg latency: {avg_ms}ms")
+    cost = PricingRegistry().estimate_session_cost(records)
+    if cost > 0:
+        lines.append(f"  Estimated cost: ${cost:.4f}")
 
     # Model breakdown
     model_tokens: dict[str, list[int]] = defaultdict(lambda: [0, 0])
