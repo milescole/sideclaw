@@ -3,11 +3,7 @@ from unittest.mock import AsyncMock
 from sideclaw.config.schema import AgentConfig, Config, OpenRouterConfig, ProvidersConfig
 from sideclaw.memory.store import MemoryStore
 from sideclaw.providers.base import LLMResponse
-from sideclaw.runtime.execution.persistence import (
-    _should_compress,
-    _unconsolidated_chars,
-    persist_session_state,
-)
+from sideclaw.runtime.execution.persistence import persist_session_state
 from sideclaw.session.manager import SessionManager
 from sideclaw.session.session import Session
 from sideclaw.workspace import sync_workspace_templates
@@ -126,3 +122,38 @@ async def test_persistence_triggers_memory_consolidation_at_threshold(tmp_path):
     assert "## Decisions" in updated
     assert "## Preferences" in updated
     assert session.last_consolidated == len(session.messages) - config.agent.memory_window
+
+
+async def test_persistence_skips_memory_consolidation_when_cost_guard_denies(tmp_path):
+    workspace = tmp_path / "workspace"
+    sync_workspace_templates(workspace)
+    config = _build_config(workspace)
+    config.agent.memory_window = 2
+    provider = AsyncMock()
+    session_manager = SessionManager(workspace / "sessions")
+    session = Session(
+        key="cli:user1",
+        messages=[
+            {"role": "user", "content": "remember alpha"},
+            {"role": "assistant", "content": "noted alpha"},
+            {"role": "user", "content": "remember beta"},
+            {"role": "assistant", "content": "noted beta"},
+        ],
+    )
+
+    class DenyingCostGuard:
+        def check_allowed(self, model: str = "") -> tuple[bool, str | None]:
+            return False, "Budget exceeded."
+
+    await persist_session_state(
+        session=session,
+        session_manager=session_manager,
+        config=config,
+        provider=provider,
+        memory_store=MemoryStore(workspace),
+        workspace_docs=WorkspaceDocs(workspace),
+        cost_guard=DenyingCostGuard(),
+    )
+
+    provider.chat.assert_not_called()
+    assert session.last_consolidated == 0

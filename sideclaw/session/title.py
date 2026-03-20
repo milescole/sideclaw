@@ -4,6 +4,7 @@ import re
 
 from loguru import logger
 
+from sideclaw.metrics.cost_guard import CostGuard
 from sideclaw.providers.base import LLMProvider
 from sideclaw.session.session import Session
 
@@ -54,6 +55,7 @@ async def generate_title(
     model: str,
     user_message: str,
     assistant_response: str,
+    cost_guard: CostGuard | None = None,
 ) -> str | None:
     """Generate a session title via LLM."""
     truncated_user = user_message[:_MAX_INPUT_CHARS]
@@ -64,6 +66,12 @@ async def generate_title(
         f"User: {truncated_user}\n"
         f"Assistant: {truncated_assistant}"
     )
+
+    if cost_guard is not None:
+        allowed, reason = cost_guard.check_allowed(model)
+        if not allowed:
+            logger.debug(reason or "Skipping auto-title generation due to budget limits.")
+            return None
 
     try:
         response = await provider.chat(
@@ -89,6 +97,7 @@ async def maybe_auto_title(
     model: str,
     user_message: str,
     assistant_response: str,
+    cost_guard: CostGuard | None = None,
 ) -> None:
     """Generate a title for the session if appropriate.
 
@@ -107,7 +116,13 @@ async def maybe_auto_title(
     if user_message.strip().lower() in _SKIP_VALUES:
         return
 
-    title = await generate_title(provider, model, user_message, assistant_response)
+    title = await generate_title(
+        provider,
+        model,
+        user_message,
+        assistant_response,
+        cost_guard,
+    )
     if title:
         session.title = title
         session.title_source = "auto"

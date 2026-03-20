@@ -3,7 +3,7 @@
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class OpenRouterConfig(BaseModel):
@@ -144,6 +144,14 @@ class UsageConfig(BaseModel):
     usage_log_path: str = "docs/metrics/usage.jsonl"
 
 
+class CostGuardConfig(BaseModel):
+    """Daily spend limit configuration."""
+
+    enabled: bool = False
+    max_daily_cost: float = 5.0
+    max_hourly_calls: int = 0  # 0 = unlimited
+
+
 class ApprovalMode(StrEnum):
     auto_deny = "auto_deny"
     cli_prompt = "cli_prompt"
@@ -170,6 +178,15 @@ class Config(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
     usage: UsageConfig = Field(default_factory=UsageConfig)
+    cost_guard: CostGuardConfig = Field(default_factory=CostGuardConfig)
+
+    @model_validator(mode="after")
+    def _validate_cost_guard_dependencies(self) -> "Config":
+        """Reject cost guard settings that cannot be enforced."""
+        if self.cost_guard.enabled and not self.usage.track_usage:
+            msg = "cost_guard.enabled requires usage.track_usage to be enabled"
+            raise ValueError(msg)
+        return self
 
     @property
     def workspace_path(self) -> Path:

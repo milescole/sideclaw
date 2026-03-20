@@ -60,6 +60,23 @@ async def test_generate_title_returns_none_on_error(provider):
     assert title is None
 
 
+async def test_generate_title_skips_when_cost_guard_denies(provider):
+    class DenyingCostGuard:
+        def check_allowed(self, model: str = "") -> tuple[bool, str | None]:
+            return False, "Budget exceeded."
+
+    title = await generate_title(
+        provider,
+        "test-model",
+        "hello",
+        "hi",
+        DenyingCostGuard(),
+    )
+
+    assert title is None
+    provider.chat.assert_not_called()
+
+
 async def test_maybe_auto_title_skips_trivial_messages(provider):
     session = Session(key="test:1")
     session.messages = [

@@ -1,3 +1,5 @@
+import pytest
+
 from sideclaw.config.schema import (
     AgentConfig,
     ApprovalConfig,
@@ -110,3 +112,11 @@ def test_config_workspace_path():
         providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
     )
     assert "custom/workspace" in str(cfg.workspace_path)
+
+
+def test_cost_guard_requires_usage_tracking():
+    with pytest.raises(ValueError, match=r"cost_guard\.enabled requires usage\.track_usage"):
+        Config(
+            usage={"track_usage": False},
+            cost_guard={"enabled": True},
+        )

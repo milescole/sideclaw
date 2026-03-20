@@ -137,6 +137,7 @@ tests/
 - `sideclaw/metrics/context_usage.py`: `ContextUsageBreakdown` with per-category token counts, ASCII bar chart, and compact/detail rendering.
 - `sideclaw/metrics/execution_log.py`: `ExecutionLogger` with `ExecutionLogEntry` dataclass, per-run JSONL persistence, and time-range queries.
 - `sideclaw/metrics/pricing.py`: `PricingRegistry` with per-model pricing data and cost estimation for calls and sessions.
+- `sideclaw/metrics/cost_guard.py`: `CostGuard` with daily spend and hourly call rate limiting, checked before each LLM call.
 - `sideclaw/metrics/display.py`: rendering logic for `/usage` and `/insights` command output, including estimated cost.
 - `sideclaw/runtime/approval.py`: centralized approval policy, pending approvals, CLI prompts, and session-scope approvals.
 - `sideclaw/tools/base.py`: tool base class and shared helpers.

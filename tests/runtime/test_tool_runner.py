@@ -195,3 +195,44 @@ async def test_resume_pending_tool_execution_handles_missing_and_denied(tmp_path
         assert should_save is True
     finally:
         configure(ApprovalConfig())
+
+
+async def test_resume_pending_tool_execution_respects_cost_guard(tmp_path):
+    configure(ApprovalConfig(mode=ApprovalMode.channel_prompt))
+    try:
+        config = _build_config(tmp_path)
+        provider = AsyncMock()
+        registry = ToolRegistry()
+        registry.register(WriteFileTool(tmp_path))
+        messages = [{"role": "system", "content": "test"}]
+        session = Session(key="telegram:chat1")
+
+        pending_result = await execute_tool_call(
+            session=session,
+            registry=registry,
+            name="write_file",
+            arguments='{"path": "blocked.txt", "content": "hello"}',
+            tool_call_id="call_1",
+            deferred_tool_calls=[],
+        )
+        assert pending_result.outcome == "pending"
+
+        class DenyingCostGuard:
+            def check_allowed(self, model: str = "") -> tuple[bool, str | None]:
+                return False, "Budget exceeded."
+
+        content, should_save = await resume_pending_tool_execution(
+            session=session,
+            scope=ApprovalScope.once,
+            messages=messages,
+            provider=provider,
+            registry=registry,
+            config=config,
+            cost_guard=DenyingCostGuard(),
+        )
+
+        assert content == "Budget exceeded."
+        assert should_save is True
+        provider.chat.assert_not_called()
+    finally:
+        configure(ApprovalConfig())

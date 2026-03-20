@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from sideclaw.agent.prompt_builder import PromptBuilder
     from sideclaw.config.schema import Config
     from sideclaw.memory.store import MemoryStore
+    from sideclaw.metrics.cost_guard import CostGuard
     from sideclaw.metrics.execution_log import ExecutionLogger
     from sideclaw.metrics.usage import UsageTracker
     from sideclaw.providers.base import LLMProvider
@@ -43,6 +44,7 @@ class CommandHandler:
         usage_tracker: UsageTracker | None = None,
         prompt_builder: PromptBuilder | None = None,
         execution_logger: ExecutionLogger | None = None,
+        cost_guard: CostGuard | None = None,
     ) -> None:
         self._session_manager = session_manager
         self._config = config
@@ -52,6 +54,7 @@ class CommandHandler:
         self._usage_tracker = usage_tracker
         self._prompt_builder = prompt_builder
         self._execution_logger = execution_logger
+        self._cost_guard = cost_guard
 
     @staticmethod
     def is_command(text: str) -> bool:
@@ -84,6 +87,7 @@ class CommandHandler:
                 provider=self._provider,
                 memory_store=self._memory_store,
                 workspace_docs=self._workspace_docs,
+                cost_guard=self._cost_guard,
             )
         except (RuntimeError, OSError, ValueError, TimeoutError) as exc:
             logger.debug(f"Consolidation on /new failed: {exc}")
@@ -103,6 +107,7 @@ class CommandHandler:
             provider=self._provider,
             memory_store=self._memory_store,
             workspace_docs=self._workspace_docs,
+            cost_guard=self._cost_guard,
         )
         return "Memory consolidation complete."
 

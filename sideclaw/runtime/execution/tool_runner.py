@@ -8,8 +8,9 @@ import json_repair
 from loguru import logger
 
 from sideclaw.config.schema import Config
+from sideclaw.metrics.cost_guard import CostGuard
 from sideclaw.metrics.usage import UsageTracker
-from sideclaw.providers.base import LLMProvider, LLMResponse
+from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk, ToolCallRequest
 from sideclaw.runtime.approval import (
     approve_pending,
     check_approval,
@@ -18,7 +19,6 @@ from sideclaw.runtime.approval import (
     get_pending,
     set_pending,
 )
-from sideclaw.providers.base import StreamChunk, ToolCallRequest
 from sideclaw.runtime.execution.llm_driver import invoke_llm, invoke_llm_stream
 from sideclaw.runtime.models.approval import (
     ApprovalScope,
@@ -125,7 +125,7 @@ async def _collect_stream(
     config: Config,
     on_chunk: OnStreamChunk,
 ) -> LLMResponse:
-    """Stream from the provider, forwarding text chunks to callback, returning assembled response."""
+    """Stream from the provider and return the assembled response."""
     text_parts: list[str] = []
     final_tool_calls: list[ToolCallRequest] = []
     finish_reason = "stop"
@@ -163,11 +163,19 @@ async def run_provider_tool_loop(
     max_tool_iterations: int,
     on_stream_chunk: OnStreamChunk = None,
     usage_tracker: UsageTracker | None = None,
+    cost_guard: CostGuard | None = None,
 ) -> str:
     """Drive the provider/tool loop until text output or pending approval."""
     tools = registry.get_definitions() or None
 
     for _iteration in range(max_tool_iterations):
+        if cost_guard is not None:
+            allowed, reason = cost_guard.check_allowed(config.agent.model)
+            if not allowed:
+                msg = reason or "Budget exceeded."
+                session.messages.append({"role": "assistant", "content": msg})
+                return msg
+
         t0 = time.monotonic()
         if on_stream_chunk is not None:
             response = await _collect_stream(
@@ -249,6 +257,7 @@ async def resume_pending_tool_execution(
     config: Config,
     max_tool_iterations: int = 20,
     usage_tracker: UsageTracker | None = None,
+    cost_guard: CostGuard | None = None,
 ) -> tuple[str, bool]:
     """Resume a previously pending approval-gated tool execution."""
     request = get_pending(session)
@@ -304,5 +313,6 @@ async def resume_pending_tool_execution(
         config=config,
         max_tool_iterations=max_tool_iterations,
         usage_tracker=usage_tracker,
+        cost_guard=cost_guard,
     )
     return content, True

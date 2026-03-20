@@ -10,6 +10,7 @@ from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
+from sideclaw.metrics.cost_guard import CostGuard
 from sideclaw.metrics.execution_log import ExecutionLogger
 from sideclaw.metrics.usage import UsageTracker
 from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk
@@ -83,6 +84,7 @@ class RuntimeLoop:
         self._memory = MemoryStore(self._workspace)
         self._workspace_docs = WorkspaceDocs(self._workspace)
         self._registry = ToolRegistry()
+        self._background_tasks: set[asyncio.Task[None]] = set()
         self._cron_service = cron_service
         self._usage_tracker: UsageTracker | None = None
         if self._config.usage.track_usage:
@@ -94,6 +96,13 @@ class RuntimeLoop:
             self._execution_logger = ExecutionLogger(
                 self._workspace / "docs/metrics/runs.jsonl"
             )
+        self._cost_guard: CostGuard | None = None
+        if self._config.cost_guard.enabled and self._usage_tracker is not None:
+            self._cost_guard = CostGuard(
+                usage_tracker=self._usage_tracker,
+                max_daily_cost=self._config.cost_guard.max_daily_cost,
+                max_hourly_calls=self._config.cost_guard.max_hourly_calls,
+            )
         self._command_handler = CommandHandler(
             session_manager=self._session_manager,
             config=self._config,
@@ -103,6 +112,7 @@ class RuntimeLoop:
             usage_tracker=self._usage_tracker,
             prompt_builder=self._context,
             execution_logger=self._execution_logger,
+            cost_guard=self._cost_guard,
         )
 
     @property
@@ -155,6 +165,7 @@ class RuntimeLoop:
                     memory_store=self._memory,
                     workspace_docs=self._workspace_docs,
                     usage_tracker=self._usage_tracker,
+                    cost_guard=self._cost_guard,
                 )
 
                 result = RunResult(
@@ -218,6 +229,7 @@ class RuntimeLoop:
                     memory_store=self._memory,
                     workspace_docs=self._workspace_docs,
                     usage_tracker=self._usage_tracker,
+                    cost_guard=self._cost_guard,
                 )
 
                 result = RunResult(
@@ -271,6 +283,7 @@ class RuntimeLoop:
                     config=self._config,
                     max_tool_iterations=self._max_tool_iterations(msg.channel),
                     usage_tracker=self._usage_tracker,
+                    cost_guard=self._cost_guard,
                 )
                 if should_save:
                     save_session_state(session=session, session_manager=self._session_manager)
@@ -301,7 +314,9 @@ class RuntimeLoop:
         self, session: Session, user_message: str, assistant_response: str
     ) -> None:
         """Fire-and-forget background task to auto-title the session."""
-        asyncio.create_task(self._auto_title(session, user_message, assistant_response))
+        task = asyncio.create_task(self._auto_title(session, user_message, assistant_response))
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
 
     async def _auto_title(
         self, session: Session, user_message: str, assistant_response: str
@@ -313,6 +328,7 @@ class RuntimeLoop:
             model=self._config.agent.model,
             user_message=user_message,
             assistant_response=assistant_response,
+            cost_guard=self._cost_guard,
         )
         if session.title:
             self._session_manager.save(session)
@@ -341,6 +357,7 @@ class RuntimeLoop:
             max_tool_iterations=self._max_tool_iterations(channel),
             on_stream_chunk=on_stream_chunk,
             usage_tracker=self._usage_tracker,
+            cost_guard=self._cost_guard,
         )
 
     async def _execute_tool_call(
@@ -397,6 +414,7 @@ class RuntimeLoop:
             memory_store=self._memory,
             workspace_docs=self._workspace_docs,
             usage_tracker=self._usage_tracker,
+            cost_guard=self._cost_guard,
         )
 
     @staticmethod

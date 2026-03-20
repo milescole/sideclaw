@@ -7,6 +7,7 @@ from loguru import logger
 
 from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
+from sideclaw.metrics.cost_guard import CostGuard
 from sideclaw.metrics.usage import UsageTracker
 from sideclaw.providers.base import LLMProvider
 from sideclaw.session.manager import SessionManager
@@ -58,6 +59,7 @@ async def persist_session_state(
     memory_store: MemoryStore,
     workspace_docs: WorkspaceDocs,
     usage_tracker: UsageTracker | None = None,
+    cost_guard: CostGuard | None = None,
 ) -> None:
     """Persist the session and trigger consolidation when needed."""
     save_session_state(session=session, session_manager=session_manager)
@@ -71,6 +73,7 @@ async def persist_session_state(
             memory_store=memory_store,
             workspace_docs=workspace_docs,
             usage_tracker=usage_tracker,
+            cost_guard=cost_guard,
         )
 
 
@@ -83,6 +86,7 @@ async def consolidate_memory(
     memory_store: MemoryStore,
     workspace_docs: WorkspaceDocs,
     usage_tracker: UsageTracker | None = None,
+    cost_guard: CostGuard | None = None,
 ) -> None:
     """Consolidate old messages into long-term memory via the LLM."""
     old_messages = session.messages[session.last_consolidated : -config.agent.memory_window]
@@ -103,6 +107,11 @@ async def consolidate_memory(
             summary_prompt += f"**{msg['role']}**: {msg['content']}\n"
 
     try:
+        if cost_guard is not None:
+            allowed, reason = cost_guard.check_allowed(config.agent.model)
+            if not allowed:
+                logger.info(reason or "Skipping memory consolidation due to budget limits.")
+                return
         t0 = time.monotonic()
         response = await provider.chat(
             messages=[{"role": "user", "content": summary_prompt}],

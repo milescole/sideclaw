@@ -167,6 +167,7 @@ Core configuration sections:
 - `providers.openrouter`: API key and base URL
 - `channels.telegram`: bot token + allowlist
 - `tools`: browser enablement, fal.ai image key/model/upscaler settings, shell exec, text-to-speech settings, web search provider/key, and other tool-specific flags
+- `cost_guard`: daily spend limit (`max_daily_cost`), hourly call cap (`max_hourly_calls`), and enable flag
 - `cron`: scheduler enable flag and polling interval
 
 Workspace defaults to:
