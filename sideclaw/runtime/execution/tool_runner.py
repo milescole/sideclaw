@@ -1,5 +1,6 @@
 """Tool iteration helpers for runtime execution."""
 
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -7,6 +8,7 @@ import json_repair
 from loguru import logger
 
 from sideclaw.config.schema import Config
+from sideclaw.metrics.usage import UsageTracker
 from sideclaw.providers.base import LLMProvider, LLMResponse
 from sideclaw.runtime.approval import (
     approve_pending,
@@ -155,11 +157,13 @@ async def run_provider_tool_loop(
     config: Config,
     max_tool_iterations: int,
     on_stream_chunk: OnStreamChunk = None,
+    usage_tracker: UsageTracker | None = None,
 ) -> str:
     """Drive the provider/tool loop until text output or pending approval."""
     tools = registry.get_definitions() or None
 
     for _iteration in range(max_tool_iterations):
+        t0 = time.monotonic()
         if on_stream_chunk is not None:
             response = await _collect_stream(
                 provider=provider,
@@ -174,6 +178,15 @@ async def run_provider_tool_loop(
                 messages=messages,
                 tools=tools,
                 config=config,
+            )
+        duration_ms = int((time.monotonic() - t0) * 1000)
+
+        if usage_tracker is not None and response.usage:
+            usage_tracker.record_from_response(
+                usage=response.usage,
+                session_key=session.key,
+                model=config.agent.model,
+                duration_ms=duration_ms,
             )
 
         if response.finish_reason == "error":
@@ -230,6 +243,7 @@ async def resume_pending_tool_execution(
     registry: ToolRegistry,
     config: Config,
     max_tool_iterations: int = 20,
+    usage_tracker: UsageTracker | None = None,
 ) -> tuple[str, bool]:
     """Resume a previously pending approval-gated tool execution."""
     request = get_pending(session)
@@ -284,5 +298,6 @@ async def resume_pending_tool_execution(
         registry=registry,
         config=config,
         max_tool_iterations=max_tool_iterations,
+        usage_tracker=usage_tracker,
     )
     return content, True

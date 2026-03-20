@@ -10,6 +10,7 @@ from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
+from sideclaw.metrics.usage import UsageTracker
 from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk
 from sideclaw.runtime.approval import get_pending
 from sideclaw.runtime.commands import CommandHandler
@@ -82,6 +83,11 @@ class RuntimeLoop:
         self._workspace_docs = WorkspaceDocs(self._workspace)
         self._registry = ToolRegistry()
         self._cron_service = cron_service
+        self._usage_tracker: UsageTracker | None = None
+        if self._config.usage.track_usage:
+            self._usage_tracker = UsageTracker(
+                self._workspace / self._config.usage.usage_log_path
+            )
         self._command_handler = CommandHandler(
             session_manager=self._session_manager,
             config=self._config,
@@ -134,6 +140,7 @@ class RuntimeLoop:
                     provider=self._provider,
                     memory_store=self._memory,
                     workspace_docs=self._workspace_docs,
+                    usage_tracker=self._usage_tracker,
                 )
 
                 result = RunResult(
@@ -196,6 +203,7 @@ class RuntimeLoop:
                     provider=self._provider,
                     memory_store=self._memory,
                     workspace_docs=self._workspace_docs,
+                    usage_tracker=self._usage_tracker,
                 )
 
                 result = RunResult(
@@ -248,6 +256,7 @@ class RuntimeLoop:
                     registry=self._registry,
                     config=self._config,
                     max_tool_iterations=self._max_tool_iterations(msg.channel),
+                    usage_tracker=self._usage_tracker,
                 )
                 if should_save:
                     save_session_state(session=session, session_manager=self._session_manager)
@@ -317,6 +326,7 @@ class RuntimeLoop:
             config=self._config,
             max_tool_iterations=self._max_tool_iterations(channel),
             on_stream_chunk=on_stream_chunk,
+            usage_tracker=self._usage_tracker,
         )
 
     async def _execute_tool_call(
@@ -372,6 +382,7 @@ class RuntimeLoop:
             provider=self._provider,
             memory_store=self._memory,
             workspace_docs=self._workspace_docs,
+            usage_tracker=self._usage_tracker,
         )
 
     @staticmethod
