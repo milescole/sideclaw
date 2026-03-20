@@ -128,7 +128,11 @@ def build_runtime(config: Config) -> AppRuntime:
         workspace=workspace,
         cron_service=cron_service,
     )
-    runtime_service = RuntimeService(agent_loop=agent_loop, session_manager=session_manager)
+    runtime_service = RuntimeService(
+        agent_loop=agent_loop,
+        session_manager=session_manager,
+        execution_logger=agent_loop.execution_logger,
+    )
     return AppRuntime(
         workspace=workspace,
         bus=bus,

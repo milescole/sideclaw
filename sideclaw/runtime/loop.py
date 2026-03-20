@@ -10,6 +10,7 @@ from sideclaw.bus.messages import InboundMessage, OutboundMessage
 from sideclaw.bus.queue import MessageBus
 from sideclaw.config.schema import Config
 from sideclaw.memory.store import MemoryStore
+from sideclaw.metrics.execution_log import ExecutionLogger
 from sideclaw.metrics.usage import UsageTracker
 from sideclaw.providers.base import LLMProvider, LLMResponse, StreamChunk
 from sideclaw.runtime.approval import get_pending
@@ -88,6 +89,11 @@ class RuntimeLoop:
             self._usage_tracker = UsageTracker(
                 self._workspace / self._config.usage.usage_log_path
             )
+        self._execution_logger: ExecutionLogger | None = None
+        if self._config.usage.track_usage:
+            self._execution_logger = ExecutionLogger(
+                self._workspace / "docs/metrics/runs.jsonl"
+            )
         self._command_handler = CommandHandler(
             session_manager=self._session_manager,
             config=self._config,
@@ -96,7 +102,13 @@ class RuntimeLoop:
             workspace_docs=self._workspace_docs,
             usage_tracker=self._usage_tracker,
             prompt_builder=self._context,
+            execution_logger=self._execution_logger,
         )
+
+    @property
+    def execution_logger(self) -> ExecutionLogger | None:
+        """The execution logger instance, if usage tracking is enabled."""
+        return self._execution_logger
 
     def _session_history_limit(self) -> int:
         """Return the configured session history limit for prompt construction."""
