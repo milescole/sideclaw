@@ -135,6 +135,8 @@ tests/
 - `sideclaw/utils/tokens.py`: token counting (tiktoken o200k_base with char/4 fallback), message token estimation, and compact formatting helpers.
 - `sideclaw/metrics/usage.py`: `UsageTracker` with `UsageRecord` dataclass, in-memory accumulation, JSONL persistence, and session/daily aggregation.
 - `sideclaw/metrics/context_usage.py`: `ContextUsageBreakdown` with per-category token counts, ASCII bar chart, and compact/detail rendering.
+- `sideclaw/metrics/execution_log.py`: `ExecutionLogger` with `ExecutionLogEntry` dataclass, per-run JSONL persistence, and time-range queries.
+- `sideclaw/metrics/display.py`: rendering logic for `/usage` and `/insights` command output.
 - `sideclaw/runtime/approval.py`: centralized approval policy, pending approvals, CLI prompts, and session-scope approvals.
 - `sideclaw/tools/base.py`: tool base class and shared helpers.
 

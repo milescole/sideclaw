@@ -1,6 +1,10 @@
 """Runtime service facade."""
 
+from __future__ import annotations
+
 from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sideclaw.bus.messages import InboundMessage
 from sideclaw.providers.base import StreamChunk
@@ -14,13 +18,23 @@ from sideclaw.runtime.models.results import RunResult, RunStatus
 from sideclaw.runtime.state import RunPhase, RuntimeState
 from sideclaw.session.manager import SessionManager
 
+if TYPE_CHECKING:
+    from sideclaw.metrics.execution_log import ExecutionLogEntry, ExecutionLogger
+
 
 class RuntimeService:
     """Thin public facade over the current runtime loop."""
 
-    def __init__(self, *, agent_loop: RuntimeLoop, session_manager: SessionManager) -> None:
+    def __init__(
+        self,
+        *,
+        agent_loop: RuntimeLoop,
+        session_manager: SessionManager,
+        execution_logger: ExecutionLogger | None = None,
+    ) -> None:
         self._agent_loop = agent_loop
         self._session_manager = session_manager
+        self._execution_logger = execution_logger
 
     async def run(self, request: RunRequest) -> RunResult:
         """Execute a new runtime request."""
@@ -53,7 +67,9 @@ class RuntimeService:
                 run_id=context.run_id,
             )
         )
-        return state.finish(status=status, output_text=response.text)
+        result = state.finish(status=status, output_text=response.text)
+        self._log_execution(state=state, request=request, status=status)
+        return result
 
     async def run_stream(
         self,
@@ -90,7 +106,9 @@ class RuntimeService:
                 run_id=context.run_id,
             )
         )
-        return state.finish(status=status, output_text=response.text)
+        result = state.finish(status=status, output_text=response.text)
+        self._log_execution(state=state, request=request, status=status)
+        return result
 
     async def resume_pending(
         self,
@@ -113,7 +131,37 @@ class RuntimeService:
                 run_id=context.run_id,
             )
         )
-        return state.finish(status=RunStatus.completed, output_text=output_text)
+        result = state.finish(status=RunStatus.completed, output_text=output_text)
+        self._log_execution(state=state, request=request, status=RunStatus.completed)
+        return result
+
+    def _log_execution(
+        self,
+        *,
+        state: RuntimeState,
+        request: RunRequest,
+        status: RunStatus,
+    ) -> None:
+        """Log the completed run to the execution logger if available."""
+        if self._execution_logger is None:
+            return
+        from sideclaw.metrics.execution_log import ExecutionLogEntry
+
+        summary = state.get_usage_summary()
+        entry = ExecutionLogEntry(
+            run_id=state.context.run_id,
+            session_key=request.session_key,
+            started_at=request.created_at.isoformat(),
+            completed_at=datetime.now(UTC).isoformat(),
+            duration_ms=summary.get("duration_ms", 0),
+            status=status.value,
+            llm_calls=summary.get("llm_calls", 0),
+            total_prompt_tokens=summary.get("prompt_tokens", 0),
+            total_completion_tokens=summary.get("completion_tokens", 0),
+            model="",
+            channel=request.surface,
+        )
+        self._execution_logger.log_run(entry)
 
     @staticmethod
     def _request_to_message(request: RunRequest) -> InboundMessage:
