@@ -137,6 +137,13 @@ class MemoryConfig(BaseModel):
     enable_injection_scan: bool = True
 
 
+class UsageConfig(BaseModel):
+    """Token usage tracking configuration."""
+
+    track_usage: bool = True
+    usage_log_path: str = "docs/metrics/usage.jsonl"
+
+
 class ApprovalMode(StrEnum):
     auto_deny = "auto_deny"
     cli_prompt = "cli_prompt"
@@ -162,6 +169,7 @@ class Config(BaseModel):
     cron: CronConfig = Field(default_factory=CronConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     approval: ApprovalConfig = Field(default_factory=ApprovalConfig)
+    usage: UsageConfig = Field(default_factory=UsageConfig)
 
     @property
     def workspace_path(self) -> Path:
