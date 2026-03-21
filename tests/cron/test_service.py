@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 import pytest
 
 from sideclaw.cron import CronService
+from sideclaw.cron.service import _interval_to_cron
 
 
 def test_add_job_persists_to_store(tmp_path) -> None:
@@ -90,6 +91,40 @@ async def test_run_due_records_executor_error(tmp_path) -> None:
     assert stored is not None
     assert stored.last_run_at is None
     assert stored.last_error == "delivery failed"
+
+
+def test_interval_to_cron_minutes() -> None:
+    assert _interval_to_cron("30m") == "*/30 * * * *"
+
+
+def test_interval_to_cron_hours() -> None:
+    assert _interval_to_cron("2h") == "0 */2 * * *"
+
+
+def test_interval_to_cron_days() -> None:
+    assert _interval_to_cron("1d") == "0 0 */1 * *"
+
+
+def test_interval_to_cron_invalid() -> None:
+    with pytest.raises(ValueError, match="Invalid interval"):
+        _interval_to_cron("abc")
+
+
+def test_interval_to_cron_rejects_zero() -> None:
+    with pytest.raises(ValueError, match="at least 1"):
+        _interval_to_cron("0m")
+
+
+def test_add_job_with_interval(tmp_path) -> None:
+    service = CronService(tmp_path / "jobs.json")
+    job = service.add_job(
+        interval="30m",
+        prompt="check in",
+        channel="telegram",
+        chat_id="123",
+    )
+    assert job.schedule == "*/30 * * * *"
+    assert job.interval == "30m"
 
 
 async def test_fire_job_executes_and_records_state(tmp_path) -> None:

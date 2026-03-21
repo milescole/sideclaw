@@ -43,11 +43,12 @@ def cron_list() -> None:
 
 
 def cron_add(
-    schedule: str,
+    schedule: str | None,
     prompt: str,
     channel: str,
     chat_id: str,
     name: str | None,
+    every: str | None = None,
 ) -> None:
     """Add a persisted cron job."""
     from sideclaw.cron import CronService
@@ -62,6 +63,7 @@ def cron_add(
             channel=channel,
             chat_id=chat_id,
             name=name,
+            interval=every,
         )
     except ValueError as exc:
         print_line(format_error_message(str(exc)))

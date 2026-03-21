@@ -1,6 +1,7 @@
 """Persisted cron scheduling for SideClaw."""
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,10 +13,29 @@ from pydantic import BaseModel, Field
 
 from sideclaw.utils.files import atomic_write_text
 
+_INTERVAL_RE = re.compile(r"^(\d+)(m|h|d)$")
+
 
 def utcnow() -> datetime:
     """Return the current UTC time."""
     return datetime.now(UTC)
+
+
+def _interval_to_cron(interval: str) -> str:
+    """Convert an interval shorthand like '30m', '2h', '1d' to a cron expression."""
+    match = _INTERVAL_RE.match(interval.strip())
+    if not match:
+        msg = f"Invalid interval format: {interval} (expected e.g. 30m, 2h, 1d)"
+        raise ValueError(msg)
+    amount, unit = int(match.group(1)), match.group(2)
+    if amount < 1:
+        msg = f"Interval amount must be at least 1: {interval}"
+        raise ValueError(msg)
+    if unit == "m":
+        return f"*/{amount} * * * *"
+    if unit == "h":
+        return f"0 */{amount} * * *"
+    return f"0 0 */{amount} * *"
 
 
 class CronJob(BaseModel):
@@ -28,6 +48,7 @@ class CronJob(BaseModel):
     chat_id: str
     enabled: bool = True
     name: str | None = None
+    interval: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     last_run_at: datetime | None = None
@@ -75,22 +96,33 @@ class CronService:
     def add_job(
         self,
         *,
-        schedule: str,
+        schedule: str | None = None,
         prompt: str,
         channel: str,
         chat_id: str,
         name: str | None = None,
+        interval: str | None = None,
     ) -> CronJob:
         """Create and persist a new cron job."""
-        self._validate_schedule(schedule)
+        resolved_interval: str | None = None
+        if interval:
+            resolved_schedule = _interval_to_cron(interval)
+            resolved_interval = interval
+        elif schedule:
+            resolved_schedule = schedule
+        else:
+            msg = "Either schedule or interval must be provided"
+            raise ValueError(msg)
+        self._validate_schedule(resolved_schedule)
         now = utcnow()
         job = CronJob(
             job_id=uuid4().hex[:12],
-            schedule=schedule,
+            schedule=resolved_schedule,
             prompt=prompt,
             channel=channel,
             chat_id=chat_id,
             name=name.strip() if name else None,
+            interval=resolved_interval,
             created_at=now,
             updated_at=now,
         )
