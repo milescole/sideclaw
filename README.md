@@ -88,19 +88,25 @@ uv sync --dev
 uv run sideclaw onboard
 ```
 
-3. Check status:
+3. Check version:
+
+```bash
+uv run sideclaw --version
+```
+
+4. Check status:
 
 ```bash
 uv run sideclaw status
 ```
 
-4. Run the local CLI assistant:
+5. Run the local CLI assistant:
 
 ```bash
 uv run sideclaw agent
 ```
 
-5. Single non-interactive message:
+6. Single non-interactive message:
 
 ```bash
 uv run sideclaw agent --message "Summarize this repo"

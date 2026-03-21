@@ -24,6 +24,12 @@ from sideclaw.session.manager import SessionManager
 runner = CliRunner()
 
 
+def test_version_flag() -> None:
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "sideclaw" in result.output
+
+
 def test_status_command() -> None:
     result = runner.invoke(app, ["status"])
     assert result.exit_code == 0

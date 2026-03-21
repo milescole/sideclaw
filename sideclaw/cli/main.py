@@ -1,5 +1,7 @@
 """CLI entry points for SideClaw."""
 
+import importlib.metadata
+
 import typer
 
 from sideclaw.cli.commands.agent import agent as agent_command
@@ -43,8 +45,24 @@ sessions_app = typer.Typer(help="Manage conversation sessions")
 memory_app = typer.Typer(help="Inspect memory files and token budgets")
 
 
+def _version_callback(value: bool) -> None:
+    if value:
+        version = importlib.metadata.version("sideclaw")
+        typer.echo(f"sideclaw {version}")
+        raise typer.Exit()
+
+
 @app.callback()
-def _startup() -> None:
+def _startup(
+    version: bool = typer.Option(
+        False,
+        "--version",
+        "-V",
+        help="Show version and exit",
+        callback=_version_callback,
+        is_eager=True,
+    ),
+) -> None:
     configure_logging()
 
 

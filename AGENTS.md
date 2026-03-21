@@ -10,6 +10,7 @@ uv run ruff format .          # format
 uv run ruff check .           # lint
 uv run pytest                 # full test suite
 uv run sideclaw onboard       # interactive setup
+uv run sideclaw --version     # show version
 uv run sideclaw status        # inspect current config/workspace state
 uv run sideclaw agent         # local interactive agent
 uv run sideclaw gateway       # long-running channel + cron runtime
