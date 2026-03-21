@@ -24,6 +24,7 @@ _COMMAND_HELP = {
     "compact": "Trigger memory consolidation now",
     "usage": "Show context and token usage for this session",
     "insights": "Show historical usage analytics (--days N, default 7)",
+    "model": "Show or switch the current model (session-scoped)",
     "help": "List available slash commands",
 }
 
@@ -139,6 +140,14 @@ class CommandHandler:
             usage_tracker=self._usage_tracker,
             execution_logger=self._execution_logger,
         )
+
+    async def _process_model(self, args: str, session: Session) -> str:
+        """Show or switch the current model."""
+        model_name = args.strip()
+        if not model_name:
+            return f"Current model: {self._config.agent.model}"
+        self._config.agent.model = model_name
+        return f"Model switched to: {model_name} (session-scoped, not persisted)"
 
     async def _process_help(self, args: str, session: Session) -> str:
         """List available commands."""

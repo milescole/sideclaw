@@ -42,6 +42,8 @@ def test_is_command_recognizes_valid_commands():
     assert CommandHandler.is_command("/help") is True
     assert CommandHandler.is_command("/HELP") is True
     assert CommandHandler.is_command("/new some args") is True
+    assert CommandHandler.is_command("/model") is True
+    assert CommandHandler.is_command("/model openai/gpt-4o") is True
 
 
 def test_is_command_rejects_non_commands():
@@ -83,6 +85,31 @@ async def test_unknown_command_returns_error(handler):
     result = await handler.handle("/bogus", session)
 
     assert "Unknown command" in result
+
+
+async def test_model_shows_current(handler, config):
+    session = Session(key="test:1")
+
+    result = await handler.handle("/model", session)
+
+    assert config.agent.model in result
+
+
+async def test_model_switches(handler, config):
+    session = Session(key="test:1")
+
+    result = await handler.handle("/model anthropic/claude-3.5-sonnet", session)
+
+    assert "anthropic/claude-3.5-sonnet" in result
+    assert config.agent.model == "anthropic/claude-3.5-sonnet"
+
+
+async def test_model_in_help(handler):
+    session = Session(key="test:1")
+
+    result = await handler.handle("/help", session)
+
+    assert "/model" in result
 
 
 async def test_compact_triggers_consolidation(handler):
