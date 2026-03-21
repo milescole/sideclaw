@@ -127,6 +127,66 @@ def test_add_job_with_interval(tmp_path) -> None:
     assert job.interval == "30m"
 
 
+def test_one_shot_fires_once(tmp_path) -> None:
+    service = CronService(tmp_path / "jobs.json")
+    job = service.add_job(
+        run_at="2026-03-22T09:00:00+00:00",
+        prompt="one-time",
+        channel="telegram",
+        chat_id="123",
+    )
+    assert job.run_at == "2026-03-22T09:00:00+00:00"
+    next_run = service.next_run_at(job)
+    assert next_run is not None
+    assert next_run.isoformat() == "2026-03-22T09:00:00+00:00"
+
+
+async def test_one_shot_auto_disables(tmp_path) -> None:
+    service = CronService(tmp_path / "jobs.json")
+    job = service.add_job(
+        run_at="2026-03-22T09:00:00+00:00",
+        prompt="one-time",
+        channel="telegram",
+        chat_id="123",
+    )
+
+    executed: list[str] = []
+
+    async def executor(current_job) -> None:
+        executed.append(current_job.job_id)
+
+    completed = await service.run_due(
+        executor,
+        now=datetime(2026, 3, 22, 9, 1, tzinfo=UTC),
+    )
+    assert len(completed) == 1
+
+    reloaded = CronService(tmp_path / "jobs.json")
+    stored = reloaded.get_job(job.job_id)
+    assert stored is not None
+    assert stored.enabled is False
+
+
+async def test_one_shot_next_run_none_after_fired(tmp_path) -> None:
+    service = CronService(tmp_path / "jobs.json")
+    job = service.add_job(
+        run_at="2026-03-22T09:00:00+00:00",
+        prompt="one-time",
+        channel="telegram",
+        chat_id="123",
+    )
+
+    async def executor(_job) -> None:
+        pass
+
+    await service.run_due(executor, now=datetime(2026, 3, 22, 9, 1, tzinfo=UTC))
+
+    reloaded = CronService(tmp_path / "jobs.json")
+    stored = reloaded.get_job(job.job_id)
+    assert stored is not None
+    assert reloaded.next_run_at(stored) is None
+
+
 async def test_fire_job_executes_and_records_state(tmp_path) -> None:
     service = CronService(tmp_path / "jobs.json")
     job = service.add_job(

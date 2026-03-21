@@ -146,6 +146,7 @@ def cron_list() -> None:
 def cron_add(
     schedule: str | None = typer.Option(None, help="Cron expression, for example '0 9 * * *'"),
     every: str | None = typer.Option(None, help="Interval shorthand, for example '30m', '2h', '1d'"),
+    at: str | None = typer.Option(None, help="One-time ISO datetime, for example '2026-03-22T09:00'"),
     prompt: str = typer.Option(..., help="Prompt to send when the job fires"),
     channel: str = typer.Option(..., help="Target channel name, for example 'telegram'"),
     chat_id: str = typer.Option(..., help="Target chat ID for delivery"),
@@ -159,6 +160,7 @@ def cron_add(
         chat_id=chat_id,
         name=name,
         every=every,
+        at=at,
     )
 
 

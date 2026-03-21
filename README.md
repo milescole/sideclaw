@@ -40,7 +40,7 @@ flowchart LR
     C --> U
 ```
 
-See [TECHNICAL.md](./TECHNICAL.md) for detailed internals and data flow.
+See [TECHNICAL.md](./TECHNICAL.md) for system architecture and design decisions.
 See [AGENTS.md](./AGENTS.md) for contributor-facing guidance tailored to coding agents working on this repo.
 
 ## Project Layout

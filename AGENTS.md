@@ -209,5 +209,5 @@ Do not claim a behavior change is safe without running the tests that exercise t
 ## Related Docs
 
 - `README.md`: user-facing setup and usage
-- `TECHNICAL.md`: broader internal architecture and runtime behavior
+- `TECHNICAL.md`: system architecture, design decisions, and internal behavior
 - `sideclaw/templates/workspace/AGENTS.md`: scaffolded downstream workspace guide, not this repo's contributor guide

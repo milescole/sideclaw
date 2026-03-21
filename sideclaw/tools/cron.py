@@ -49,6 +49,14 @@ class CronTool(Tool):
                     "type": "string",
                     "description": "Cron expression like '0 21 * * 5'",
                 },
+                "interval": {
+                    "type": "string",
+                    "description": "Interval shorthand like '30m', '2h', '1d'",
+                },
+                "run_at": {
+                    "type": "string",
+                    "description": "One-time ISO datetime like '2026-03-22T09:00'",
+                },
                 "job_id": {
                     "type": "string",
                     "description": "Cron job ID for remove/enable/disable",
@@ -67,12 +75,16 @@ class CronTool(Tool):
         action: str,
         prompt: str | None = None,
         schedule: str | None = None,
+        interval: str | None = None,
+        run_at: str | None = None,
         job_id: str | None = None,
         name: str | None = None,
         **_: Any,
     ) -> str:
         if action == "add":
-            return self._add_job(prompt=prompt, schedule=schedule, name=name)
+            return self._add_job(
+                prompt=prompt, schedule=schedule, interval=interval, run_at=run_at, name=name,
+            )
         if action == "list":
             return self._list_jobs()
         if action == "remove":
@@ -88,14 +100,14 @@ class CronTool(Tool):
         *,
         prompt: str | None,
         schedule: str | None,
+        interval: str | None,
+        run_at: str | None,
         name: str | None,
     ) -> str:
         if self._in_cron_context.get():
             return "Error: cannot schedule new jobs from within a cron job execution"
         if not prompt or not prompt.strip():
             return "Error: prompt is required for add"
-        if not schedule or not schedule.strip():
-            return "Error: schedule is required for add"
 
         context = get_tool_runtime_context()
         if context is None:
@@ -103,11 +115,13 @@ class CronTool(Tool):
 
         try:
             job = self._cron.add_job(
-                schedule=schedule.strip(),
+                schedule=schedule.strip() if schedule else None,
                 prompt=prompt.strip(),
                 channel=context.channel,
                 chat_id=context.chat_id,
                 name=name.strip() if name else None,
+                interval=interval.strip() if interval else None,
+                run_at=run_at.strip() if run_at else None,
             )
         except ValueError as exc:
             return f"Error: {exc}"

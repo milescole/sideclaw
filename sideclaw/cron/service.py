@@ -21,6 +21,11 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def _ensure_aware(dt: datetime) -> datetime:
+    """Assume naive datetimes are UTC and return timezone-aware."""
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+
 def _interval_to_cron(interval: str) -> str:
     """Convert an interval shorthand like '30m', '2h', '1d' to a cron expression."""
     match = _INTERVAL_RE.match(interval.strip())
@@ -49,6 +54,7 @@ class CronJob(BaseModel):
     enabled: bool = True
     name: str | None = None
     interval: str | None = None
+    run_at: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)
     last_run_at: datetime | None = None
@@ -102,18 +108,30 @@ class CronService:
         chat_id: str,
         name: str | None = None,
         interval: str | None = None,
+        run_at: str | None = None,
     ) -> CronJob:
         """Create and persist a new cron job."""
+        provided = sum(x is not None for x in (schedule, interval, run_at))
+        if provided != 1:
+            msg = "Exactly one of schedule, interval, or run_at must be provided"
+            raise ValueError(msg)
+
         resolved_interval: str | None = None
-        if interval:
+
+        if run_at:
+            try:
+                datetime.fromisoformat(run_at)
+            except ValueError as exc:
+                msg = f"Invalid run_at datetime: {run_at}"
+                raise ValueError(msg) from exc
+            resolved_schedule = "once"
+        elif interval:
             resolved_schedule = _interval_to_cron(interval)
             resolved_interval = interval
-        elif schedule:
-            resolved_schedule = schedule
         else:
-            msg = "Either schedule or interval must be provided"
-            raise ValueError(msg)
-        self._validate_schedule(resolved_schedule)
+            resolved_schedule = schedule or ""
+            self._validate_schedule(resolved_schedule)
+
         now = utcnow()
         job = CronJob(
             job_id=uuid4().hex[:12],
@@ -123,6 +141,7 @@ class CronService:
             chat_id=chat_id,
             name=name.strip() if name else None,
             interval=resolved_interval,
+            run_at=run_at,
             created_at=now,
             updated_at=now,
         )
@@ -153,13 +172,14 @@ class CronService:
         if not job.enabled:
             return None
 
-        base = job.last_run_at or job.created_at
-        if base.tzinfo is None:
-            base = base.replace(tzinfo=UTC)
+        if job.run_at:
+            if job.last_run_at is not None:
+                return None
+            return _ensure_aware(datetime.fromisoformat(job.run_at))
+
+        base = _ensure_aware(job.last_run_at or job.created_at)
         next_run = croniter(job.schedule, base).get_next(datetime)
-        if next_run.tzinfo is None:
-            next_run = next_run.replace(tzinfo=UTC)
-        return next_run.astimezone(UTC)
+        return _ensure_aware(next_run).astimezone(UTC)
 
     async def run_due(
         self,
@@ -168,9 +188,7 @@ class CronService:
         now: datetime | None = None,
     ) -> list[CronJob]:
         """Execute all jobs that are due as of now."""
-        as_of = now or utcnow()
-        if as_of.tzinfo is None:
-            as_of = as_of.replace(tzinfo=UTC)
+        as_of = _ensure_aware(now or utcnow())
 
         due_jobs = [
             job
@@ -213,6 +231,8 @@ class CronService:
             job.last_run_at = as_of
             job.last_error = None
             job.updated_at = utcnow()
+            if job.run_at:
+                job.enabled = False
             return True
         finally:
             self._save()

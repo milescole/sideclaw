@@ -19,7 +19,89 @@ The runtime now exposes an explicit run boundary:
 - `RuntimeLoop` performs the underlying LLM/tool orchestration
 - surfaces receive a `RunResult` instead of depending directly on transport-shaped loop returns
 
-## 2. Core Components
+## 2. Design Decisions
+
+### Surfaces are thin wiring
+
+CLI commands, the tool layer, and channel adapters are dispatch-and-render code.
+They do not contain business logic, input validation, or data transformation.
+That work belongs in the service layer.
+
+**Rationale.** A surface is one of several consumers of the same service. If
+validation lives in the CLI, the agent tool and tests must duplicate it. Keeping
+validation in the service means a single authoritative check that all callers
+share.
+
+**What surfaces do:**
+
+- Parse framework-specific input (Typer options, tool JSON, Telegram messages)
+- Pass arguments through to the service
+- Catch `ValueError` from the service and format the error for the consumer
+- Render output (Rich markup for CLI, plain text for tools, chunked text for
+  Telegram)
+
+**What surfaces do not do:**
+
+- Validate or parse domain values (dates, cron expressions, intervals)
+- Enforce business rules (mutual exclusivity, bounds checking)
+- Transform between domain representations
+- Import domain internals beyond the service entry point
+
+**Error contract.** Services raise `ValueError` with a descriptive message for
+invalid input. Services return `bool` or `None` for not-found lookups. Surfaces
+catch `ValueError` and translate it to exit codes, error strings, or user-facing
+messages.
+
+### CLI architecture
+
+The CLI is built with Typer and split into three concerns:
+
+| Concern | Location | Responsibility |
+|---------|----------|----------------|
+| Routing | `cli/main.py` | Typer decorators mapping flags to command functions |
+| Commands | `cli/commands/*.py` | Load config, call service, catch errors, print output |
+| Rendering | `cli/render/` | Rich console access and pure formatting helpers |
+
+`main.py` is declarative wiring only — it defines Typer options and passes them
+directly to command functions with no transformation.
+
+Command functions follow a consistent pattern:
+
+```python
+def cron_add(schedule, prompt, channel, chat_id, name, every, at):
+    config = load_config(get_config_path())
+    service = CronService(cron_store_path(config.workspace_path))
+    try:
+        job = service.add_job(
+            schedule=schedule, prompt=prompt, channel=channel,
+            chat_id=chat_id, name=name, interval=every, run_at=at,
+        )
+    except ValueError as exc:
+        print_line(format_error_message(str(exc)))
+        raise typer.Exit(1) from exc
+    print_line(format_success_message(f"Added cron job {job.job_id}"))
+```
+
+Agent-facing tools in `sideclaw/tools/` follow the same thin-wiring pattern.
+They accept parameters from the LLM, pass them to the service, and return a
+plain text result. Validation belongs in the service, not the tool.
+
+### Other design choices
+
+- **Stable runtime boundary.** `RuntimeService` is the only public entry point
+  for agent work. Internal APIs behind it can change freely.
+- **Factory-based composition.** `sideclaw/app/factory.py` builds the dependency
+  graph once per process. Heavyweight imports are lazy so lightweight CLI
+  commands do not load the full runtime.
+- **Session and memory are separate stores.** Sessions preserve transcripts;
+  memory preserves curated durable context. Consolidation bridges the two.
+- **Tool registration is config-driven.** Core tools are always registered;
+  optional tools register only when their config requirements are met.
+- **Approval is a runtime policy.** Three modes (`auto_deny`, `cli_prompt`,
+  `channel_prompt`) must behave consistently regardless of which surface
+  triggered the run.
+
+## 3. Core Components
 
 | Component | File(s) | Responsibility |
 | --- | --- | --- |
@@ -36,7 +118,7 @@ The runtime now exposes an explicit run boundary:
 | Channel adapters | `sideclaw/channels/*` | Platform-specific I/O (Telegram currently) |
 | Cron scheduler | `sideclaw/cron/service.py` | Persisted job storage, due-run computation, and background execution |
 
-## 3. End-to-End Message Flow
+## 4. End-to-End Message Flow
 
 ```mermaid
 sequenceDiagram
@@ -76,7 +158,7 @@ sequenceDiagram
 
 `MAX_TOOL_ITERATIONS = 20` in `sideclaw/runtime/loop.py` bounds tool recursion and prevents infinite call loops.
 
-## 4. Prompt and Context Assembly
+## 5. Prompt and Context Assembly
 
 `PromptBuilder` composes the system prompt from:
 
@@ -98,7 +180,7 @@ Message payload sent to the provider:
 - prior history from session (bounded and user-turn-aligned)
 - current `user` message
 
-## 4.1 Runtime Models
+## 5.1 Runtime Models
 
 The runtime boundary uses a few typed models to separate execution semantics from adapter DTOs:
 
@@ -113,7 +195,7 @@ Today `RuntimeService` adapts `RunRequest` into the existing `InboundMessage`-dr
 Internally, `RuntimeLoop` now delegates execution work to `sideclaw/runtime/execution/prepare.py`,
 `llm_driver.py`, `tool_runner.py`, `persistence.py`, and `output.py` instead of owning those steps inline.
 
-## 5. Data and Persistence Model
+## 6. Data and Persistence Model
 
 ### Session persistence
 
@@ -138,6 +220,8 @@ Internally, `RuntimeLoop` now delegates execution work to `sideclaw/runtime/exec
   - enabled flag
   - created/updated timestamps
   - last run time and last error
+  - optional `run_at` for one-shot scheduling
+  - optional `interval` for interval-based scheduling
 
 ### Consolidation behavior
 
@@ -148,7 +232,7 @@ When unconsolidated message count reaches `agent.memory_window` (default `50`):
 - A short topics entry is appended to `HISTORY.md`
 - `last_consolidated` is advanced to keep recent working context
 
-## 6. Tool System
+## 7. Tool System
 
 All tools implement `Tool`:
 
@@ -175,7 +259,7 @@ Default tools are registered by `build_default_tool_registry()` in `sideclaw/too
 
 Filesystem tools resolve paths relative to configured workspace and reject traversal outside it (`../../` style escapes).
 
-## 7. Configuration Model
+## 8. Configuration Model
 
 Config file path: `~/.sideclaw/config.json`
 
@@ -212,7 +296,7 @@ Schema root: `Config` in `sideclaw/config/schema.py`
 
 Environment variables prefixed with `SIDECLAW_` override config file values. Use `__` for nested keys (e.g. `SIDECLAW_AGENT__MODEL`). Values are coerced to int, float, bool, or string.
 
-## 8. Channel Layer
+## 9. Channel Layer
 
 Telegram implementation (`sideclaw/channels/telegram.py`) provides:
 
@@ -225,7 +309,7 @@ Telegram implementation (`sideclaw/channels/telegram.py`) provides:
 
 Gateway mode routes outbound responses by matching `response.channel` to `channel_name`.
 
-## 8.1 CLI Render Layer
+## 9.1 CLI Render Layer
 
 CLI presentation and runtime construction are both split from command behavior:
 
@@ -237,7 +321,7 @@ CLI presentation and runtime construction are both split from command behavior:
 
 This keeps the CLI surface thin while preserving a dedicated place for future gateway/API/web composition differences.
 
-## 9. Cron Scheduling
+## 10. Cron Scheduling
 
 `CronService` persists jobs to `cron/jobs.json` and runs due jobs in the gateway process.
 
@@ -247,7 +331,7 @@ This keeps the CLI surface thin while preserving a dedicated place for future ga
 - Outbound responses from scheduled jobs are routed through the same channel adapter used for live chat.
 - `CronTool` blocks nested scheduling during cron execution to avoid runaway self-scheduling loops.
 
-## 10. Provider Layer
+## 11. Provider Layer
 
 ### Model Registry
 
@@ -340,7 +424,7 @@ and exponential backoff. Individual providers let exceptions propagate; `RetryPr
 - Converts LiteLLM tool call payloads into internal `ToolCallRequest`
 - Lets exceptions propagate to `RetryProvider`
 
-## 11. Failure Handling and Operational Notes
+## 12. Failure Handling and Operational Notes
 
 - Tool failures are isolated and surfaced as tool result text, not process crashes.
 - LLM provider failures are retried by `RetryProvider` for transient errors, then converted to error responses.
@@ -348,7 +432,7 @@ and exponential backoff. Individual providers let exceptions propagate; `RetryPr
 - `exec` tool has timeout control but executes shell commands directly; treat as high-trust environment capability.
 - Cron execution failures are stored on the job record and retried on the next matching schedule.
 
-## 12. Testing Strategy
+## 13. Testing Strategy
 
 Test suite covers:
 
@@ -370,7 +454,7 @@ Run all tests:
 uv run pytest
 ```
 
-## 13. Extensibility Guide
+## 14. Extensibility Guide
 
 ### Add a new tool
 
@@ -398,7 +482,7 @@ uv run pytest
 3. Instantiate in `sideclaw/cli/commands/gateway.py` using the runtime built by `sideclaw/app/gateway.py`
 4. Add focused tests for filtering, lifecycle, and outbound behavior
 
-## 14. External Documentation
+## 15. External Documentation
 
 - Typer: https://typer.tiangolo.com/
 - Pydantic: https://docs.pydantic.dev/
