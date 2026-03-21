@@ -210,6 +210,8 @@ Schema root: `Config` in `sideclaw/config/schema.py`
 
 `onboard` CLI command supports merge-safe updates of existing config instead of destructive overwrite.
 
+Environment variables prefixed with `SIDECLAW_` override config file values. Use `__` for nested keys (e.g. `SIDECLAW_AGENT__MODEL`). Values are coerced to int, bool, or string.
+
 ## 8. Channel Layer
 
 Telegram implementation (`sideclaw/channels/telegram.py`) provides:

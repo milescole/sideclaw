@@ -176,6 +176,18 @@ Core configuration sections:
 - `cost_guard`: daily spend limit (`max_daily_cost`), hourly call cap (`max_hourly_calls`), and enable flag
 - `cron`: scheduler enable flag and polling interval
 
+### Environment Variable Overrides
+
+Any config key can be overridden with a `SIDECLAW_` environment variable. Use `__` for nesting:
+
+```bash
+export SIDECLAW_AGENT__MODEL=anthropic/claude-3.5-sonnet
+export SIDECLAW_AGENT__MAX_TOKENS=2048
+export SIDECLAW_TOOLS__EXEC_ENABLED=true
+```
+
+Values are coerced: `true`/`false` become booleans, numeric strings become ints, everything else stays a string. Env vars take precedence over the JSON config file.
+
 Workspace defaults to:
 
 ```text

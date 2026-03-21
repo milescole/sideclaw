@@ -58,3 +58,42 @@ def test_load_config_from_json(tmp_path):
     assert cfg.tools.tts.enabled is True
     assert cfg.tools.tts.provider == "elevenlabs"
     assert cfg.tools.tts.elevenlabs_api_key == "el_test_key"
+
+
+def test_env_override_flat_key(tmp_path, monkeypatch):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"agent": {"model": "openai/gpt-4o"}}))
+    monkeypatch.setenv("SIDECLAW_AGENT__MAX_TOKENS", "2048")
+    cfg = load_config(path)
+    assert cfg.agent.max_tokens == 2048
+
+
+def test_env_override_nested_key(tmp_path, monkeypatch):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({}))
+    monkeypatch.setenv("SIDECLAW_AGENT__TEMPERATURE", "0.3")
+    cfg = load_config(path)
+    assert cfg.agent.temperature == 0.3
+
+
+def test_env_override_bool_coercion(tmp_path, monkeypatch):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({}))
+    monkeypatch.setenv("SIDECLAW_TOOLS__EXEC_ENABLED", "true")
+    cfg = load_config(path)
+    assert cfg.tools.exec_enabled is True
+
+
+def test_env_override_takes_precedence_over_json(tmp_path, monkeypatch):
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"agent": {"model": "openai/gpt-4o"}}))
+    monkeypatch.setenv("SIDECLAW_AGENT__MODEL", "anthropic/claude-3.5-sonnet")
+    cfg = load_config(path)
+    assert cfg.agent.model == "anthropic/claude-3.5-sonnet"
+
+
+def test_env_override_without_file(tmp_path, monkeypatch):
+    path = tmp_path / "nonexistent.json"
+    monkeypatch.setenv("SIDECLAW_AGENT__MODEL", "anthropic/claude-3.5-sonnet")
+    cfg = load_config(path)
+    assert cfg.agent.model == "anthropic/claude-3.5-sonnet"
