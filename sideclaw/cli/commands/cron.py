@@ -4,6 +4,7 @@ import typer
 
 from sideclaw.cli.render.console import print_line
 from sideclaw.cli.render.formatting import (
+    format_cron_history_row,
     format_cron_row,
     format_cron_timestamp,
     format_error_message,
@@ -108,6 +109,33 @@ def cron_disable(job_id: str) -> None:
         print_line(format_error_message(f"Cron job not found: {job_id}"))
         raise typer.Exit(1)
     print_line(format_success_message(f"Disabled cron job {job_id}"))
+
+
+def cron_history(job_id: str | None = None, limit: int = 20) -> None:
+    """Show cron execution history."""
+    from sideclaw.cron import CronHistory, CronService
+
+    config = load_config(get_config_path())
+    history = CronHistory(config.workspace_path / "cron" / "history.jsonl")
+    service = CronService(cron_store_path(config.workspace_path), history=history)
+    entries = service.get_history(job_id=job_id, limit=limit)
+
+    if not entries:
+        print_line("[dim]No cron execution history.[/dim]")
+        return
+
+    print_line(format_heading("Cron History"))
+    for entry in entries:
+        print_line(
+            format_cron_history_row(
+                started_at=entry.started_at,
+                job_id=entry.job_id,
+                job_name=entry.job_name,
+                status=entry.status,
+                duration_ms=entry.duration_ms,
+                error=entry.error,
+            )
+        )
 
 
 def cron_fire(job_id: str) -> None:

@@ -116,7 +116,7 @@ plain text result. Validation belongs in the service, not the tool.
 | Session store | `sideclaw/session/manager.py` | JSONL persistence per channel/chat key |
 | Memory store | `sideclaw/memory/store.py` | Long-term memory and append-only history files |
 | Channel adapters | `sideclaw/channels/*` | Platform-specific I/O (Telegram currently) |
-| Cron scheduler | `sideclaw/cron/service.py` | Persisted job storage, due-run computation, and background execution |
+| Cron scheduler | `sideclaw/cron/service.py`, `sideclaw/cron/history.py` | Persisted job storage, due-run computation, execution history, and background execution |
 
 ## 4. End-to-End Message Flow
 
@@ -213,8 +213,9 @@ Internally, `RuntimeLoop` now delegates execution work to `sideclaw/runtime/exec
 ### Cron persistence
 
 - `cron/jobs.json`: persisted scheduled jobs
+- `cron/history.jsonl`: append-only execution history
 - Each job stores:
-  - cron expression
+  - cron expression (or interval shorthand / one-shot datetime)
   - prompt payload
   - target channel and chat id
   - enabled flag
@@ -330,6 +331,7 @@ This keeps the CLI surface thin while preserving a dedicated place for future ga
 - Cron executions are turned into `RunRequest`s with `user_id="cron"` and routed through `RuntimeService`.
 - Outbound responses from scheduled jobs are routed through the same channel adapter used for live chat.
 - `CronTool` blocks nested scheduling during cron execution to avoid runaway self-scheduling loops.
+- `CronHistory` records every execution (start time, duration, status, error) to `cron/history.jsonl`. History is accessed through `CronService.get_history()` and surfaced via `sideclaw cron history`.
 
 ## 11. Provider Layer
 

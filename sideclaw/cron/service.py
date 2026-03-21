@@ -11,6 +11,7 @@ from croniter import croniter
 from loguru import logger
 from pydantic import BaseModel, Field
 
+from sideclaw.cron.history import CronHistoryEntry
 from sideclaw.utils.files import atomic_write_text
 
 _INTERVAL_RE = re.compile(r"^(\d+)(m|h|d)$")
@@ -73,7 +74,13 @@ CronExecutor = Callable[[CronJob], Awaitable[None]]
 class CronService:
     """Load, persist, and execute scheduled jobs."""
 
-    def __init__(self, store_path: Path, *, poll_interval_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        store_path: Path,
+        *,
+        poll_interval_seconds: int = 30,
+        history: "CronHistory | None" = None,
+    ) -> None:
         if poll_interval_seconds < 1:
             msg = "poll_interval_seconds must be at least 1"
             raise ValueError(msg)
@@ -82,18 +89,17 @@ class CronService:
         self._poll_interval_seconds = poll_interval_seconds
         self._jobs: dict[str, CronJob] = {}
         self._task: asyncio.Task[None] | None = None
+        self._history = history
         self._load()
 
     def list_jobs(self) -> list[CronJob]:
         """Return jobs ordered by next run time."""
-        return sorted(
-            self._jobs.values(),
-            key=lambda job: (
-                self.next_run_at(job) is None,
-                self.next_run_at(job) or datetime.max.replace(tzinfo=UTC),
-                job.job_id,
-            ),
-        )
+
+        def _sort_key(job: CronJob) -> tuple[bool, datetime, str]:
+            nra = self.next_run_at(job)
+            return (nra is None, nra or datetime.max.replace(tzinfo=UTC), job.job_id)
+
+        return sorted(self._jobs.values(), key=_sort_key)
 
     def get_job(self, job_id: str) -> CronJob | None:
         """Return a single job by ID."""
@@ -188,6 +194,7 @@ class CronService:
         now: datetime | None = None,
     ) -> list[CronJob]:
         """Execute all jobs that are due as of now."""
+
         as_of = _ensure_aware(now or utcnow())
 
         due_jobs = [
@@ -219,23 +226,54 @@ class CronService:
         *,
         as_of: datetime,
     ) -> bool:
-        """Run a single job and persist state. Return True on success."""
+        """Run a single job, record history, and persist state. Return True on success."""
+        started = utcnow()
+        error: str | None = None
+        ok = False
         try:
             await executor(job)
         except Exception as exc:  # noqa: BLE001
-            job.last_error = str(exc)
+            error = str(exc)
+            job.last_error = error
             job.updated_at = utcnow()
             logger.exception("Cron job {} failed", job.job_id)
-            return False
         else:
             job.last_run_at = as_of
             job.last_error = None
             job.updated_at = utcnow()
             if job.run_at:
                 job.enabled = False
-            return True
+            ok = True
         finally:
+            finished = utcnow()
+            self._record_history(
+                CronHistoryEntry(
+                    job_id=job.job_id,
+                    job_name=job.name or "",
+                    started_at=started.isoformat(),
+                    completed_at=finished.isoformat(),
+                    status="error" if error else "completed",
+                    error=error,
+                    duration_ms=int(
+                        (finished - started).total_seconds() * 1000
+                    ),
+                )
+            )
             self._save()
+        return ok
+
+    def get_history(
+        self, *, job_id: str | None = None, limit: int = 20
+    ) -> list["CronHistoryEntry"]:
+        """Return execution history entries, most recent first."""
+        if self._history is None:
+            return []
+        return self._history.get_entries(job_id=job_id, limit=limit)
+
+    def _record_history(self, entry: "CronHistoryEntry") -> None:
+        """Record a history entry if history tracking is enabled."""
+        if self._history is not None:
+            self._history.record(entry)
 
     async def start(self, executor: CronExecutor) -> None:
         """Start the background scheduler loop."""

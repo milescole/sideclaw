@@ -173,3 +173,21 @@ def format_cron_row(
             f"error={last_error}",
         ]
     )
+
+
+def format_cron_history_row(
+    *,
+    started_at: str,
+    job_id: str,
+    job_name: str,
+    status: str,
+    duration_ms: int,
+    error: str | None,
+) -> str:
+    """Format a cron history entry row for CLI output."""
+    status_mark = "[green]OK[/green]" if status == "completed" else "[red]ERR[/red]"
+    error_info = f" error={error}" if error else ""
+    return (
+        f"  {started_at} | {job_id} | {job_name or '-'} | "
+        f"{status_mark} | {duration_ms}ms{error_info}"
+    )

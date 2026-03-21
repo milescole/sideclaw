@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+from sideclaw.cron.history import CronHistory
 from sideclaw.cron.service import CronJob, CronService
 
 
@@ -10,4 +11,4 @@ def cron_store_path(workspace: Path) -> Path:
     return workspace / "cron" / "jobs.json"
 
 
-__all__ = ["CronJob", "CronService", "cron_store_path"]
+__all__ = ["CronHistory", "CronJob", "CronService", "cron_store_path"]

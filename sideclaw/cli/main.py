@@ -23,6 +23,9 @@ from sideclaw.cli.commands.cron import (
     cron_fire as cron_fire_command,
 )
 from sideclaw.cli.commands.cron import (
+    cron_history as cron_history_command,
+)
+from sideclaw.cli.commands.cron import (
     cron_list as cron_list_command,
 )
 from sideclaw.cli.commands.cron import (
@@ -186,6 +189,15 @@ def cron_disable(job_id: str) -> None:
 def cron_fire(job_id: str) -> None:
     """Manually fire a cron job now."""
     cron_fire_command(job_id)
+
+
+@cron_app.command("history")
+def cron_history(
+    job_id: str | None = typer.Option(None, help="Filter by job ID"),
+    limit: int = typer.Option(20, help="Max entries to show"),
+) -> None:
+    """Show cron execution history."""
+    cron_history_command(job_id=job_id, limit=limit)
 
 
 app.add_typer(cron_app, name="cron")

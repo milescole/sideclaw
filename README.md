@@ -155,6 +155,8 @@ uv run sideclaw cron disable <job-id>
 uv run sideclaw cron enable <job-id>
 uv run sideclaw cron remove <job-id>
 uv run sideclaw cron fire <job-id>
+uv run sideclaw cron history
+uv run sideclaw cron history --job-id <job-id>
 ```
 
 ## Configuration

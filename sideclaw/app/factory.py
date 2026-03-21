@@ -104,6 +104,7 @@ def build_runtime(config: Config) -> AppRuntime:
     """Build the common runtime dependencies used by app composition roots."""
     from sideclaw.bus.queue import MessageBus
     from sideclaw.cron import CronService, cron_store_path
+    from sideclaw.cron.history import CronHistory
     from sideclaw.runtime.loop import RuntimeLoop
     from sideclaw.runtime.service import RuntimeService
     from sideclaw.session.manager import SessionManager
@@ -116,9 +117,11 @@ def build_runtime(config: Config) -> AppRuntime:
     bus = MessageBus()
     provider = _build_provider(config)
     session_manager = SessionManager(session_dir)
+    cron_history = CronHistory(workspace / "cron" / "history.jsonl")
     cron_service = CronService(
         cron_store_path(workspace),
         poll_interval_seconds=config.cron.poll_interval_seconds,
+        history=cron_history,
     )
     agent_loop = RuntimeLoop(
         config=config,
