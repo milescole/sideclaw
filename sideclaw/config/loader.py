@@ -18,14 +18,19 @@ def get_config_path() -> Path:
     return DEFAULT_CONFIG_DIR / "config.json"
 
 
-def _coerce_value(value: str) -> str | int | bool:
-    """Coerce a string env value to int, bool, or string."""
+def coerce_config_value(value: str) -> str | int | float | bool:
+    """Coerce a string value to int, float, bool, or string."""
     if value.lower() in ("true", "false"):
         return value.lower() == "true"
     try:
         return int(value)
     except ValueError:
-        return value
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
 
 
 def _apply_env_overrides(config_dict: dict) -> dict:
@@ -42,7 +47,7 @@ def _apply_env_overrides(config_dict: dict) -> dict:
             if part not in target or not isinstance(target[part], dict):
                 target[part] = {}
             target = target[part]
-        target[parts[-1]] = _coerce_value(value)
+        target[parts[-1]] = coerce_config_value(value)
     return config_dict
 
 

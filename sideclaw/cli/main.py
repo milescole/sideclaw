@@ -5,6 +5,10 @@ import importlib.metadata
 import typer
 
 from sideclaw.cli.commands.agent import agent as agent_command
+from sideclaw.cli.commands.config_cmd import config_get as config_get_command
+from sideclaw.cli.commands.config_cmd import config_list as config_list_command
+from sideclaw.cli.commands.config_cmd import config_reset as config_reset_command
+from sideclaw.cli.commands.config_cmd import config_set as config_set_command
 from sideclaw.cli.commands.cron import (
     cron_add as cron_add_command,
 )
@@ -40,6 +44,7 @@ from sideclaw.cli.commands.status import status as status_command
 from sideclaw.utils.redact import configure_logging
 
 app = typer.Typer(name="sideclaw", help="Lightweight AI assistant framework")
+config_app = typer.Typer(help="View and modify configuration")
 cron_app = typer.Typer(help="Manage scheduled jobs")
 sessions_app = typer.Typer(help="Manage conversation sessions")
 memory_app = typer.Typer(help="Inspect memory files and token budgets")
@@ -92,6 +97,33 @@ def agent(
 def gateway() -> None:
     """Run as a long-running gateway with all enabled channels."""
     gateway_command()
+
+
+@config_app.command("list")
+def config_list() -> None:
+    """List all config values."""
+    config_list_command()
+
+
+@config_app.command("get")
+def config_get(key: str) -> None:
+    """Get a config value by dot path."""
+    config_get_command(key)
+
+
+@config_app.command("set")
+def config_set(key: str, value: str) -> None:
+    """Set a config value by dot path."""
+    config_set_command(key, value)
+
+
+@config_app.command("reset")
+def config_reset(key: str) -> None:
+    """Reset a config key to its default."""
+    config_reset_command(key)
+
+
+app.add_typer(config_app, name="config")
 
 
 @cron_app.command("list")

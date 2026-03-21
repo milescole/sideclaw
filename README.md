@@ -176,6 +176,15 @@ Core configuration sections:
 - `cost_guard`: daily spend limit (`max_daily_cost`), hourly call cap (`max_hourly_calls`), and enable flag
 - `cron`: scheduler enable flag and polling interval
 
+### Config Commands
+
+```bash
+uv run sideclaw config list            # show all config values
+uv run sideclaw config get agent.model # get a specific value
+uv run sideclaw config set agent.max_tokens 2048  # set a value
+uv run sideclaw config reset agent.max_tokens     # reset to default
+```
+
 ### Environment Variable Overrides
 
 Any config key can be overridden with a `SIDECLAW_` environment variable. Use `__` for nesting:
@@ -186,7 +195,7 @@ export SIDECLAW_AGENT__MAX_TOKENS=2048
 export SIDECLAW_TOOLS__EXEC_ENABLED=true
 ```
 
-Values are coerced: `true`/`false` become booleans, numeric strings become ints, everything else stays a string. Env vars take precedence over the JSON config file.
+Values are coerced: `true`/`false` become booleans, numeric strings become ints or floats, everything else stays a string. Env vars take precedence over the JSON config file.
 
 Workspace defaults to:
 

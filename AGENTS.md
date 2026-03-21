@@ -113,7 +113,7 @@ tests/
 ## Key Modules
 
 - `sideclaw/cli/main.py`: process entry point and Typer wiring for the CLI.
-- `sideclaw/cli/commands/`: command implementation modules for onboarding, status, agent, cron, memory, and gateway behavior.
+- `sideclaw/cli/commands/`: command implementation modules for onboarding, status, config, agent, cron, memory, and gateway behavior.
 - `sideclaw/cli/render/`: shared Rich console boundary plus pure formatting helpers for CLI presentation.
 - `sideclaw/app/factory.py`: shared runtime construction and provider routing (`_build_provider` / `_detect_provider`) for the current host process; keep heavyweight runtime imports lazy here so unrelated CLI commands stay lightweight.
 - `sideclaw/providers/models.py`: centralized `ModelRegistry` and `ModelInfo` — single source of truth for model metadata and provider detection. Add new models here rather than hardcoding prefix matching.
