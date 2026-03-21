@@ -18,7 +18,7 @@ from sideclaw.cli.render.formatting import (
 from sideclaw.config.loader import get_config_path, load_config
 from sideclaw.config.schema import Config
 from sideclaw.runtime.models.approval import ApprovalScope
-from sideclaw.runtime.models.requests import RunRequest
+from sideclaw.runtime.models.requests import RunRequest, RunTrigger
 
 GATEWAY_MAX_CONCURRENCY = 8
 
@@ -112,6 +112,7 @@ async def run_gateway(config: Config) -> None:
                     surface=job.channel,
                     conversation_id=job.chat_id,
                     user_id="cron",
+                    trigger=RunTrigger.scheduled,
                 )
             )
             await _route_outbound_message(

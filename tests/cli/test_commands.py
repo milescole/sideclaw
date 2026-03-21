@@ -281,6 +281,74 @@ def test_cron_enable_and_disable_commands(tmp_path: Path) -> None:
         assert f"Enabled cron job {job_id}" in enable_result.output
 
 
+def test_cron_fire_runs_job(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    workspace = tmp_path / "workspace"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(workspace)),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    from sideclaw.cron import CronService, cron_store_path
+
+    service = CronService(cron_store_path(workspace))
+    job = service.add_job(
+        schedule="0 9 * * *",
+        prompt="Hello",
+        channel="telegram",
+        chat_id="123",
+        name="fire-test",
+    )
+
+    class StubRuntimeService:
+        async def run(self, request):
+            class Result:
+                output_text = "Fired!"
+
+            return Result()
+
+    cron_surface = import_module("sideclaw.cli.commands.cron")
+    stub_runtime = type(
+        "StubRuntime", (), {"runtime_service": StubRuntimeService(), "cron_service": service}
+    )()
+    with patch.object(cron_surface, "get_config_path", return_value=config_path):
+        with patch("sideclaw.app.cli.build_cli_runtime", return_value=stub_runtime):
+            result = runner.invoke(app, ["cron", "fire", job.job_id])
+
+    assert result.exit_code == 0
+    assert "Fired!" in result.output
+
+
+def test_cron_fire_nonexistent(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    workspace = tmp_path / "workspace"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(workspace)),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    from sideclaw.cron import CronService, cron_store_path
+
+    service = CronService(cron_store_path(workspace))
+    stub_runtime = type(
+        "StubRuntime", (), {"runtime_service": None, "cron_service": service}
+    )()
+
+    cron_surface = import_module("sideclaw.cli.commands.cron")
+    with patch.object(cron_surface, "get_config_path", return_value=config_path):
+        with patch("sideclaw.app.cli.build_cli_runtime", return_value=stub_runtime):
+            result = runner.invoke(app, ["cron", "fire", "nonexistent"])
+
+    assert result.exit_code == 1
+    assert "not found" in result.output
+
+
 def test_cron_add_rejects_invalid_schedule(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     save_config(

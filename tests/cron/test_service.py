@@ -92,6 +92,41 @@ async def test_run_due_records_executor_error(tmp_path) -> None:
     assert stored.last_error == "delivery failed"
 
 
+async def test_fire_job_executes_and_records_state(tmp_path) -> None:
+    service = CronService(tmp_path / "jobs.json")
+    job = service.add_job(
+        schedule="0 9 * * *",
+        prompt="fire me",
+        channel="telegram",
+        chat_id="123",
+    )
+
+    executed: list[str] = []
+
+    async def executor(current_job) -> None:
+        executed.append(current_job.job_id)
+
+    result = await service.fire_job(job.job_id, executor)
+    assert result.job_id == job.job_id
+    assert executed == [job.job_id]
+
+    reloaded = CronService(tmp_path / "jobs.json")
+    stored = reloaded.get_job(job.job_id)
+    assert stored is not None
+    assert stored.last_run_at is not None
+    assert stored.last_error is None
+
+
+async def test_fire_job_returns_none_for_unknown_id(tmp_path) -> None:
+    service = CronService(tmp_path / "jobs.json")
+
+    async def executor(_job) -> None:
+        pass
+
+    result = await service.fire_job("nope", executor)
+    assert result is None
+
+
 def test_next_run_at_returns_none_when_disabled(tmp_path) -> None:
     service = CronService(tmp_path / "jobs.json")
     job = service.add_job(

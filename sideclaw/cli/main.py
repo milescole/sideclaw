@@ -20,6 +20,9 @@ from sideclaw.cli.commands.cron import (
     cron_enable as cron_enable_command,
 )
 from sideclaw.cli.commands.cron import (
+    cron_fire as cron_fire_command,
+)
+from sideclaw.cli.commands.cron import (
     cron_list as cron_list_command,
 )
 from sideclaw.cli.commands.cron import (
@@ -173,6 +176,12 @@ def cron_enable(job_id: str) -> None:
 def cron_disable(job_id: str) -> None:
     """Disable a persisted cron job."""
     cron_disable_command(job_id)
+
+
+@cron_app.command("fire")
+def cron_fire(job_id: str) -> None:
+    """Manually fire a cron job now."""
+    cron_fire_command(job_id)
 
 
 app.add_typer(cron_app, name="cron")

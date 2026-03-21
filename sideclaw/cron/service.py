@@ -148,21 +148,42 @@ class CronService:
         completed: list[CronJob] = []
 
         for job in due_jobs:
-            try:
-                await executor(job)
-            except Exception as exc:  # noqa: BLE001
-                job.last_error = str(exc)
-                job.updated_at = utcnow()
-                logger.exception("Cron job {} failed", job.job_id)
-            else:
-                job.last_run_at = as_of
-                job.last_error = None
-                job.updated_at = utcnow()
+            ok = await self._execute_job(job, executor, as_of=as_of)
+            if ok:
                 completed.append(job)
-            finally:
-                self._save()
 
         return completed
+
+    async def fire_job(self, job_id: str, executor: CronExecutor) -> CronJob | None:
+        """Manually trigger a single job through the standard execution path."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            return None
+        await self._execute_job(job, executor, as_of=utcnow())
+        return job
+
+    async def _execute_job(
+        self,
+        job: CronJob,
+        executor: CronExecutor,
+        *,
+        as_of: datetime,
+    ) -> bool:
+        """Run a single job and persist state. Return True on success."""
+        try:
+            await executor(job)
+        except Exception as exc:  # noqa: BLE001
+            job.last_error = str(exc)
+            job.updated_at = utcnow()
+            logger.exception("Cron job {} failed", job.job_id)
+            return False
+        else:
+            job.last_run_at = as_of
+            job.last_error = None
+            job.updated_at = utcnow()
+            return True
+        finally:
+            self._save()
 
     async def start(self, executor: CronExecutor) -> None:
         """Start the background scheduler loop."""
