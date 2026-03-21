@@ -9,6 +9,7 @@ from sideclaw.cli.render.formatting import (
     format_browser_status,
     format_created_file_line,
     format_cron_row,
+    format_cron_summary,
     format_cron_timestamp,
     format_error_message,
     format_exit_message,
@@ -17,7 +18,8 @@ from sideclaw.cli.render.formatting import (
     format_gateway_model_line,
     format_heading,
     format_image_generation_status,
-    format_openrouter_status,
+    format_provider_key_status,
+    format_session_count,
     format_session_reset_message,
     format_shell_exec_status,
     format_success_message,
@@ -43,16 +45,28 @@ def test_message_helpers_apply_expected_colors() -> None:
     assert format_error_message("boom") == "[red]boom[/red]"
 
 
-def test_format_openrouter_status_masks_long_keys() -> None:
-    status = format_openrouter_status("sk-or-v1-1234567890abcd")
+def test_format_provider_key_status_masks_long_keys() -> None:
+    status = format_provider_key_status("OpenRouter", "sk-or-v1-1234567890abcd")
+    assert "OpenRouter" in status
     assert "configured" in status
     assert "sk-or-v1" in status
     assert "abcd" in status
     assert "1234567890abcd" not in status
 
 
-def test_format_openrouter_status_handles_missing_key() -> None:
-    assert "not configured" in format_openrouter_status(None)
+def test_format_provider_key_status_handles_missing_key() -> None:
+    assert "not configured" in format_provider_key_status("Anthropic", None)
+
+
+def test_format_provider_key_status_masks_short_keys() -> None:
+    status = format_provider_key_status("OpenAI", "short-key")
+    assert "***" in status
+    assert "short-key" not in status
+
+
+def test_format_session_count_formats_count() -> None:
+    assert format_session_count(0) == "Sessions: 0"
+    assert format_session_count(5) == "Sessions: 5"
 
 
 def test_render_agent_markdown_returns_markdown() -> None:
@@ -172,3 +186,13 @@ def test_format_cron_row_contains_core_fields() -> None:
     assert "job-1" in row
     assert "daily-summary" in row
     assert "enabled=yes" in row
+
+
+def test_format_cron_summary_includes_counts_and_next_run() -> None:
+    assert format_cron_summary(3, 2, "2026-03-12T09:00:00+00:00") == (
+        "Cron jobs: 3 total, 2 enabled, next run: 2026-03-12T09:00:00+00:00"
+    )
+
+
+def test_format_cron_summary_handles_no_next_run() -> None:
+    assert "next run: -" in format_cron_summary(0, 0, "-")

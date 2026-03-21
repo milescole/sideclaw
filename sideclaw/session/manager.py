@@ -106,6 +106,10 @@ class SessionManager:
         except (json.JSONDecodeError, IndexError):
             return None
 
+    def count_sessions(self) -> int:
+        """Count persisted sessions without reading file contents."""
+        return sum(1 for _ in self._dir.glob("*.jsonl"))
+
     def list_sessions(self) -> list[dict]:
         """List all saved sessions with title, message count, and metadata."""
         sessions = []

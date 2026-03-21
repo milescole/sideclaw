@@ -59,6 +59,26 @@ def test_status_command_reports_provider_masking(tmp_path: Path) -> None:
     assert "7890abcd" not in result.output
 
 
+def test_status_shows_session_and_cron_summary(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    workspace = tmp_path / "workspace"
+    save_config(
+        Config(
+            agent=AgentConfig(workspace=str(workspace)),
+            providers=ProvidersConfig(openrouter=OpenRouterConfig(api_key="sk-test")),
+        ),
+        config_path,
+    )
+
+    status_surface = import_module("sideclaw.cli.commands.status")
+    with patch.object(status_surface, "get_config_path", return_value=config_path):
+        result = runner.invoke(app, ["status"])
+
+    assert result.exit_code == 0
+    assert "Sessions:" in result.output
+    assert "Cron jobs:" in result.output
+
+
 def test_approval_config_for_cli_forces_cli_prompt() -> None:
     approval = ApprovalConfig(mode=ApprovalMode.channel_prompt)
     app_cli = import_module("sideclaw.app.cli")

@@ -35,15 +35,6 @@ def format_exit_message() -> str:
     return "Bye!"
 
 
-def format_openrouter_status(api_key: str | None) -> str:
-    """Format the OpenRouter status line."""
-    if not api_key:
-        return "OpenRouter: [red]not configured[/red]"
-
-    masked = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
-    return f"OpenRouter: [green]configured[/green] ({masked})"
-
-
 def format_web_search_status(provider: object | None, api_key: str | None) -> str:
     """Format the web-search status line."""
     if provider is None or not api_key:
@@ -129,6 +120,24 @@ def format_gateway_channels_line(channel_names: Sequence[str]) -> str:
 def render_agent_markdown(text: str) -> Markdown:
     """Build the markdown renderable for agent responses."""
     return Markdown(text)
+
+
+def format_provider_key_status(provider_name: str, api_key: str | None) -> str:
+    """Format a provider API key status line with masking."""
+    if not api_key:
+        return f"{provider_name}: [dim]not configured[/dim]"
+    masked = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
+    return f"{provider_name}: [green]configured[/green] ({masked})"
+
+
+def format_session_count(count: int) -> str:
+    """Format the session count status line."""
+    return f"Sessions: {count}"
+
+
+def format_cron_summary(total: int, enabled: int, next_run: str) -> str:
+    """Format the cron jobs summary status line."""
+    return f"Cron jobs: {total} total, {enabled} enabled, next run: {next_run}"
 
 
 def format_cron_timestamp(value: object) -> str:
