@@ -9,6 +9,7 @@ from sideclaw.cli.commands.config_cmd import config_get as config_get_command
 from sideclaw.cli.commands.config_cmd import config_list as config_list_command
 from sideclaw.cli.commands.config_cmd import config_reset as config_reset_command
 from sideclaw.cli.commands.config_cmd import config_set as config_set_command
+from sideclaw.cli.commands.doctor import doctor as doctor_command
 from sideclaw.cli.commands.cron import (
     cron_add as cron_add_command,
 )
@@ -81,6 +82,12 @@ def onboard() -> None:
 def status() -> None:
     """Show SideClaw status."""
     status_command()
+
+
+@app.command()
+def doctor() -> None:
+    """Run diagnostic checks."""
+    doctor_command()
 
 
 @app.command()
